@@ -10,7 +10,12 @@ from app.models.chat_message import ChatMessage
 from app.models.organization import Organization, OrganizationMember
 from app.models.refresh_token import RefreshToken
 from app.models.report import Report
-from app.models.satellite_scene import SatelliteScene
+from app.models.satellite_scene import (
+    SatelliteRetrieval,
+    SatelliteScene,
+    SatelliteSceneAsset,
+    SatelliteSceneDiscovery,
+)
 from app.models.saved_location import SavedLocation
 from app.models.user import User
 from app.models.weather_observation import WeatherObservation
@@ -25,7 +30,10 @@ __all__ = [
     "OrganizationMember",
     "RefreshToken",
     "Report",
+    "SatelliteRetrieval",
     "SatelliteScene",
+    "SatelliteSceneAsset",
+    "SatelliteSceneDiscovery",
     "SavedLocation",
     "User",
     "WeatherObservation",

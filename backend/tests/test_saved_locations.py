@@ -55,3 +55,58 @@ def test_locations_are_private_to_owner(client):
     register_user(other, "loc-other@example.com", "locother")
     response = other.get(f"/api/v1/saved-locations/{created['id']}")
     assert response.status_code == 404
+
+
+def test_polygon_autofills_type_center_and_info(client):
+    client = _secret(client)
+    polygon = {
+        "type": "Polygon",
+        "coordinates": [[[80.0, 12.0], [81.0, 12.0], [81.0, 13.0], [80.0, 13.0], [80.0, 12.0]]],
+    }
+    created = client.post("/api/v1/saved-locations", json={"name": "Field", "geometry": polygon})
+    assert created.status_code == 201
+    body = created.json()
+    assert body["location_type"] == "polygon"
+    assert body["geometry_type"] == "Polygon"
+    assert body["bbox"] == [80.0, 12.0, 81.0, 13.0]
+    assert body["centroid"]["lon"] == 80.5
+    assert body["area_m2_approx"] > 1e9
+    assert body["center_lat"] is not None
+    assert body["center_lon"] is not None
+
+
+def test_invalid_geometry_rejected(client):
+    client = _secret(client)
+    open_ring = {
+        "type": "Polygon",
+        "coordinates": [[[80.0, 12.0], [81.0, 12.0], [81.0, 13.0], [80.0, 13.0]]],
+    }
+    response = client.post("/api/v1/saved-locations", json={"name": "Bad", "geometry": open_ring})
+    assert response.status_code == 400
+    assert "closed ring" in response.json()["error"]["message"]
+
+
+def test_workspace_membership_enforced_on_create(client):
+    owner = _secret(client)
+    org = owner.post("/api/v1/organizations", json={"name": "Map Org", "slug": "maporg"}).json()
+    ws = owner.post(
+        f"/api/v1/organizations/{org['id']}/workspaces",
+        json={"name": "Map WS", "slug": "mapws"},
+    ).json()
+
+    from fastapi.testclient import TestClient
+
+    other = TestClient(owner.app)
+    register_user(other, "loc-ws@example.com", "locws")
+    response = other.post(
+        "/api/v1/saved-locations",
+        json={"name": "Snoop", "workspace_id": ws["id"], "center_lat": 0.0, "center_lon": 0.0},
+    )
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "workspace_not_found"
+
+    ok = owner.post(
+        "/api/v1/saved-locations",
+        json={"name": "Mine", "workspace_id": ws["id"], "center_lat": 0.0, "center_lon": 0.0},
+    )
+    assert ok.status_code == 201

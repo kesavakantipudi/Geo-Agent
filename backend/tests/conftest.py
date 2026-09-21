@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
 import uuid
 from collections.abc import Generator
 from pathlib import Path
@@ -29,6 +30,9 @@ os.environ["GEOAGENT_APP_ENV"] = "test"
 os.environ["GEOAGENT_AUTH_SECRET_KEY"] = "test-only-secret-key-that-is-at-least-32-chars!!"
 os.environ["GEOAGENT_DATABASE_URL"] = TEST_URL
 os.environ["GEOAGENT_CORS_ORIGINS"] = "http://localhost:3000"
+os.environ["GEOAGENT_RETRIEVAL_STORAGE_DIR"] = str(
+    Path(tempfile.gettempdir()) / "geoagent_test_satellite"
+)
 
 from app.db.session import engine  # noqa: E402
 from app.main import app  # noqa: E402  (env must be set before import)

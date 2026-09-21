@@ -1,6 +1,6 @@
 # GeoAgent backend
 
-Python 3.12 / FastAPI application foundation (Phase 2). See [`../README.md`](../README.md) and [`../docs/`](../docs/) for project context, and [`../DEVELOPMENT.md`](../DEVELOPMENT.md) for conventions.
+Python 3.12 / FastAPI application (Phases 2–3). See [`../README.md`](../README.md) and [`../docs/`](../docs/) for project context, and [`../DEVELOPMENT.md`](../DEVELOPMENT.md) for conventions.
 
 ## What is implemented
 
@@ -10,11 +10,14 @@ Python 3.12 / FastAPI application foundation (Phase 2). See [`../README.md`](../
   - `users` — `GET/PATCH /users/me`.
   - `organizations` — list/create/get/update + member CRUD with RBAC (owner/admin/member).
   - `workspaces` — list/create/patch under an organization.
-  - `saved-locations` — create/list/get/update/delete with GeoJSON/WKT geometry stored as PostGIS `geometry(Geometry,4326)`.
+  - `saved-locations` — create/list/get/update/delete with GeoJSON/WKT geometry stored as PostGIS `geometry(Geometry,4326)`; response now includes geometry type/GeoJSON, bbox, centroid, and approximate area (Phase 3).
+  - `geometries` — `POST /geometries/validate`: strict GeoJSON/EWKT parsing, SRID-4326 enforcement, vertex cap, validity, and planimetric area via shapely/pyproj (Phase 3).
+  - `places` — `GET /places/search`: provider-based geocoding (Photon by default, no key), rate-limited, with a disabled fallback (Phase 3).
+  - `analysis-sessions` — CRUD for analysis draft sessions: AOI, date range, agent selection, workspace scoping (Phase 3).
   - `health` — app and DB/PostGIS checks.
 - **Auth** — access JWT (15 min) + rotating refresh token (30 days), HTTP-only cookies (`geoagent_access` / `geoagent_refresh`), bearer-token support.
-- **Migrations** — Alembic + GeoAlchemy2; `alembic/versions/0001_initial.py` creates `postgis` and all tables.
-- **Tests** — pytest suite that provisions a disposable PostGIS database per test and runs the suite against it.
+- **Migrations** — Alembic + GeoAlchemy2; `0001_initial.py` (tables + PostGIS) and `0002_analysis_session_config.py` (AOI geometry, dates, agents on analysis sessions).
+- **Tests** — pytest suite that provisions a disposable PostGIS database per test and runs the suite against it (**66 tests**).
 
 ## Layout
 
@@ -25,7 +28,8 @@ app/
   db/            Session, base models
   models/        SQLAlchemy/GeoAlchemy2 ORM models
   schemas/       Pydantic request/response models
-  services/      Business logic (auth, users, orgs, workspaces, saved locations, geometry)
+  services/      Business logic (auth, users, orgs, workspaces, saved
+                 locations, geometry, geocoding/, analysis sessions)
 alembic/         Migrations (env.py reads settings)
 tests/           pytest suite (conftest provisions a throwaway DB per test)
 ```
@@ -43,7 +47,7 @@ cp .env.example .env          # then fill in real values (see below)
 uv sync                       # installs deps from uv.lock
 uv run alembic upgrade head   # migrate the database (docker compose up -d db first)
 uv run uvicorn app.main:app --reload
-uv run pytest -q              # 21 tests against a fresh PostGIS DB
+uv run pytest -q              # 66 tests against a fresh PostGIS DB
 uv run ruff check .
 uv run ruff format .
 ```
@@ -72,6 +76,10 @@ GEOAGENT_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 ```
 
 Generate a secret with `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
+
+Phase 3 settings (all optional with defaults): `GEOAGENT_GEOCODER_PROVIDER=photon|disabled`,
+`GEOAGENT_GEOCODER_PHOTON_URL`, timeout/rate/user-agent/max-results, `GEOAGENT_MAX_GEOMETRY_POINTS`,
+and `GEOAGENT_ANALYSIS_MAX_FUTURE_YEARS`. The default Photon geocoder needs no API key.
 
 ## Container
 

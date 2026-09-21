@@ -1,8 +1,22 @@
 # GeoAgent — API Specification
 
-> **Status:** Phase 2 delivered a working `/api/v1` (auth, users, organizations, workspaces, saved locations, health) with 21 passing integration tests. Endpoints below not yet implemented remain planned; planned modules stay as recorded design intent.
+> **Status:** Phase 3 (Location Intelligence) is implemented on top of Phase 2: `GET /places/search` (provider-based geocoding), `POST /geometries/validate` (strict GeoJSON parsing + shapely/pyproj validation and area estimation), full `analysis-sessions` CRUD (AOI, date range, agent selection), and an enriched saved-locations response (geometry type/GeoJSON, bbox, centroid, area). The suite has 66 passing integration tests. Endpoints below not yet implemented remain planned; planned modules stay as recorded design intent.
 
 Reference: [`PRD.md`](../PRD.md) §28.
+
+## 8. Phase 3 — implemented endpoints
+
+All under the Phase 2 base path `/api/v1`, same cookie/bearer auth and error contract. Error codes added in Phase 3: `invalid_bbox`, `geometry_not_valid`, `geometry_too_complex`, `aoi_not_polygon`, `aoi_empty`, `invalid_date_range`, `invalid_agents`, `session_not_draft`, `analysis_session_not_found`, `saved_location_not_found`, `saved_location_no_geometry`, `service_unavailable`.
+
+| Method | Path | Summary |
+| --- | --- | --- |
+| `GET` | `/places/search` | Geocode a free-text `q` (2+ chars) via the configured provider (default Photon). Optional `limit` (default from `GEOAGENT_GEOCODER_MAX_RESULTS`, max 10) and `bbox` (`minLon,minLat,maxLon,maxLat`). Returns `[{id, provider, label, display_name, bbox, center}]`. Provider errors → `503 service_unavailable`. |
+| `POST` | `/geometries/validate` | Body `{geometry, require_area?}`. Accepts any GeoJSON geometry (Feature/FeatureCollection unwrapped, single geometry) or EWKT/`SRID=4326;...` text. Enforces SRID 4326, coordinate ranges, closed rings, and the `GEOAGENT_MAX_GEOMETRY_POINTS` vertex cap. Returns `{geometry_type, is_valid, point_count, bbox, centroid, area_m2_approx, srid, warnings}` with validation errors named by field. |
+| `GET/POST` | `/analysis-sessions` | List sessions for the current user (optional `?workspace_id=` restricts to one workspace; members of the workspace see its sessions) / create a draft. Create body: `{title?, workspace_id?, aoi?, saved_location_id?, start_date?, end_date?, agents?}` — exactly one of `aoi` (GeoJSON Polygon/MultiPolygon with area) or `saved_location_id`; dates optional but must come as both-or-neither with `end >= start` and `end` no more than `GEOAGENT_ANALYSIS_MAX_FUTURE_YEARS` ahead; `agents` is a deduped non-empty list from `agri, aqua, weather, change`. |
+| `GET/PATCH/DELETE` | `/analysis-sessions/{id}` | Read (owner or workspace member) / update (owner, while `status=draft`) / delete (owner). PATCH accepts the same fields as create and returns the updated session. |
+| `GET/POST` | `/saved-locations`, `GET/PATCH/DELETE` `/saved-locations/{id}` | Phase 2 surface extended: create now requires membership for a linked workspace (404 when absent), derives `location_type`/`center_lat`/`center_lon` from geometry when a custom geometry is given, returns `geometry_type`, `geometry_geojson`, `bbox`, `centroid`, and `area_m2_approx`. |
+
+Session and saved-location responses include `aoi` / `geometry_geojson` as GeoJSON objects and `area_m2_approx` computed with a Lambert Azimuthal Equal-Area projection at the centroid (shapely + pyproj).
 
 ## 6. Phase 2 — implemented endpoints
 
@@ -37,7 +51,7 @@ Schemas and interactive docs: run the backend and open `/docs` (OpenAPI). Tests 
 
 ## 7. Planned (unchanged intent for later phases)
 
-Originally planned module groups (`location`, `satellite`, `weather`, `agriculture`, `water`, `change`, `geoagent`, `chat`, `analysis`, `reports`) remain as design intent. Phase 2 seeded the persistence for several of them (analyses, satellite scenes, weather observations, chat sessions/messages, reports tables exist in the schema). API versioning practice is now fixed at `/api/v1`.
+Originally planned module groups (`satellite`, `weather`, `agriculture`, `water`, `change`, `geoagent`, `chat`, `analysis`, `reports`) remain as design intent. Phase 2 seeded the persistence for several of them (analyses, satellite scenes, weather observations, chat sessions/messages, reports tables exist in the schema). API versioning practice is fixed at `/api/v1`. Phase 3 covered the `location` group (geocoding + geometry + persisted analysis sessions) end to end; agent execution, satellite retrieval, weather, and change detection remain future phases.
 
 ## 1. Design notes
 

@@ -1,13 +1,16 @@
 """Analysis sessions and analysis requests (schema foundation only).
 
-Request execution (satellite retrieval, agents, etc.) belongs to later phases.
+Phase 3 adds the analysis configuration (AOI geometry, date range, selected
+agents) to ``AnalysisSession``. Request execution (satellite retrieval,
+agents, etc.) belongs to later phases.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from geoalchemy2 import Geometry
+from sqlalchemy import Date, DateTime, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -30,6 +33,12 @@ class AnalysisSession(TimestampMixin, Base):
     )
     # draft | queued | running | completed | failed
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="draft")
+    # AOI (SRID 4326) selected for the analysis.
+    aoi_geometry = mapped_column(Geometry(srid=4326, spatial_index=True), nullable=True)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Structured agent selection, e.g. ["agri", "weather"] (subset of AGENT_CODES).
+    agents: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
 
 class AnalysisRequest(TimestampMixin, Base):

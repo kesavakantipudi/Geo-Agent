@@ -58,6 +58,50 @@ class Settings(BaseSettings):
     # SQLAlchemy echo (debug only)
     db_echo: bool = False
 
+    # Place geocoding (Phase 3). Provider is pluggable via env; default is Photon.
+    geocoder_provider: str = "photon"  # "photon" | "none" (disable)
+    geocoder_photon_url: str = "https://photon.komoot.io/api"
+    geocoder_timeout_seconds: float = 10.0
+    geocoder_rate_per_second: float = 1.0  # 0 disables throttling
+    geocoder_user_agent: str = "GeoAgent/0.1 (Phase 3 development)"
+    geocoder_max_results: int = 8
+
+    # Geometry validation (Phase 3)
+    max_geometry_points: int = 2000
+    # Analysis sessions must not target an unreasonably distant future.
+    analysis_max_future_years: int = 10
+
+    # Satellite scene discovery (Phase 4). Providers are pluggable via env;
+    # "none" (or an empty list) disables scene discovery.
+    satellite_enabled_providers: str = "planetary-computer"  # comma-separated
+    satellite_max_scenes_per_provider: int = 40
+    satellite_max_cloud_cover: float = 100.0
+    satellite_timeout_seconds: float = 20.0
+    satellite_rate_per_second: float = 0.0  # 0 disables throttling
+    satellite_user_agent: str = "GeoAgent/0.1 (Phase 4 development)"
+
+    # Microsoft Planetary Computer (default provider). STAC search is key-less;
+    # data assets are signed on demand through the Data Authentication (SAS) API.
+    planetary_computer_stac_url: str = "https://planetarycomputer.microsoft.com/api/stac/v1"
+    planetary_computer_sas_url: str = "https://planetarycomputer.microsoft.com/api/sas/v1"
+
+    # Copernicus Data Space Ecosystem (optional; discovered via its STAC API).
+    cdse_stac_url: str = "https://stac.dataspace.copernicus.eu/v1"
+    cdse_token_url: str = (
+        "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+    )
+    cdse_client_id: str = "cdse-public"
+    cdse_username: str = ""  # leave empty to skip CDSE downloads
+    cdse_password: str = ""  # never committed to the repository
+    cdse_totp: str = ""  # optional one-time password for 2FA-protected accounts
+
+    # Bounded, on-demand asset retrieval.
+    retrieval_storage_dir: str = "var/satellite"
+    retrieval_max_bytes: int = 200 * 1024 * 1024  # 200 MiB per asset
+    retrieval_max_assets_per_scene: int = 8
+    retrieval_url_allowlist: str = ""  # extra allowed download hosts, comma-separated
+    retrieval_timeout_seconds: float = 60.0
+
     @model_validator(mode="after")
     def _validate_secret_key(self) -> Settings:
         if self.app_env != "test" and (not self.auth_secret_key or len(self.auth_secret_key) < 32):

@@ -41,3 +41,9 @@ def conflict(message: str = "Resource already exists.", code: str = "conflict") 
 
 def bad_request(message: str, code: str = "bad_request") -> ApiError:
     return ApiError(400, code, message)
+
+
+def unavailable(
+    message: str = "Service temporarily unavailable.", code: str = "service_unavailable"
+) -> ApiError:
+    return ApiError(503, code, message)

@@ -9,3 +9,18 @@
 body {
   @apply bg-zinc-50 text-zinc-900 antialiased;
 }
+
+.geo-pin {
+  background: transparent;
+  border: none;
+}
+
+.geo-pin__dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #2563eb;
+  border: 3px solid #ffffff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
+  cursor: pointer;
+}

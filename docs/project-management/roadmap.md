@@ -6,9 +6,9 @@
 
 | Phase | Deliverable focus |
 | --- | --- |
-| **Phase 1 — Engineering Foundation** | Repository organization, docs, standards, env config, project-management readiness. *(Current phase — in progress.)* |
+| **Phase 1 — Engineering Foundation** | Repository organization, docs, standards, env config, project-management readiness. *(Completed — see phase1-checklist.)* |
 | **Phase 2 — Application Foundation** | Backend (FastAPI) and frontend (Next.js) skeletons, PostgreSQL/PostGIS setup, API structure, environment wiring. |
-| **Phase 3 — Location Intelligence** | Location search/selection, AOI geometry, geocoding provider abstraction. |
+| **Phase 3 — Location Intelligence** | Location search/selection, AOI geometry, geocoding provider abstraction. *(Implemented — see phase3-checklist.)* |
 | **Phase 4 — Satellite Intelligence Infrastructure** | Satellite data retrieval, provider abstraction, imagery handling, caching. |
 | **Phase 5 — Weather and Environmental Infrastructure** | Weather provider abstraction, historical/forecast retrieval. |
 

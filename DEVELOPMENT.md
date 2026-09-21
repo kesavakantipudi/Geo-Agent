@@ -2,7 +2,7 @@
 
 This document is the engineering reference for the GeoAgent team. It covers the development environment, coding conventions, and the practical standards we follow. Contribution process details (branching, commits, reviews) are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-> **Status:** GeoAgent is in **Phase 2 (Application Foundation)**. The FastAPI backend, Alembic/PostGIS setup, pytest suite, and Next.js frontend are implemented and configured in this repository. The conventions below are now enforced by real tooling (ruff, pytest, ESLint, `tsc`), not just recommendations. Planned agent/provider layers still follow the "recommended" wording where noted.
+> **Status:** GeoAgent is in **Phase 3 (Location Intelligence)**. The FastAPI backend, Alembic/PostGIS setup, pytest suite, leaflet map canvas, and Next.js frontend are implemented and configured in this repository. The conventions below are enforced by real tooling (ruff, pytest, ESLint, `tsc`), not just recommendations. Planned agent/provider layers still follow the "recommended" wording where noted.
 
 - [Team setup checklist](#team-setup-checklist)
 - [Environment variables](#environment-variables)
@@ -29,6 +29,7 @@ Each team member should complete this checklist on their own machine and confirm
 - [ ] Backend tests pass: `cd backend && uv run pytest -q`.
 - [ ] Frontend boots: `cd frontend && npm install && npm run dev` → open `http://localhost:3000`.
 - [ ] Frontend checks pass: `cd frontend && npm run typecheck && npm run lint && npm run build`.
+- [ ] Analysis page works end to end: search a place, draw an AOI polygon/rectangle, import/export GeoJSON, save a draft session, reopen it (see `docs/project-management/phase3-checklist.md`).
 
 ---
 
@@ -48,13 +49,13 @@ Each team member should complete this checklist on their own machine and confirm
 
 **Implemented in Phase 2.** Backend conventions are enforced by configuration in `backend/pyproject.toml` and `backend/.env.example`.
 
-- **Project/dependency management:** `uv` with `pyproject.toml` + `uv.lock`. Dev tools (pytest, ruff, httpx) live in `[dependency-groups] dev`. Install with `uv sync`.
+- **Project/dependency management:** `uv` with `pyproject.toml` + `uv.lock`. Dev tools (pytest, ruff, httpx) live in `[dependency-groups] dev`. Install with `uv sync`. Runtime geometry/geocoding deps (shapely, pyproj, httpx) are regular dependencies.
 - **Formatting & linting:** Ruff. Config: `line-length = 100`, ignores `B008` (FastAPI `Depends` defaults) and `E501`. Run `uv run ruff check .` and `uv run ruff format .`. Lint must stay clean before pushing.
 - **Type hints:** Required on all function signatures. Pydantic models for schemas, SQLAlchemy 2 typed mappings for ORM models.
 - **Error handling:** `app/core/exceptions.py` defines `ApiError` (code/message/details) → `{"error": {...}}`; services raise domain exceptions; global handlers translate validation and HTTP errors. Never swallow errors.
 - **Logging:** `logging` with structured messages and context; never `print`.
 - **Testing:** `pytest` (`backend/tests/`). `tests/conftest.py` sets test env before importing the app, provisions a fresh PostGIS database per test, runs `alembic upgrade head`, and drops the DB after — full isolation. Add `test_<module>.py` for new endpoints/services.
-- **Migrations:** Alembic; initial migration creates `postgis` and all tables (`backend/alembic/versions/0001_initial.py`). After model changes, generate a new revision; verify `upgrade` and `downgrade`.
+- **Migrations:** Alembic; `0001_initial` creates `postgis` and all tables, `0002_analysis_session_config` adds analysis AOI/date/agent columns. After model changes, generate a new revision; verify `upgrade` and `downgrade`.
 
 ## TypeScript / frontend conventions
 
@@ -66,6 +67,7 @@ Each team member should complete this checklist on their own machine and confirm
 - **Type safety:** `strict: true`; explicit interfaces/types in `src/lib/api/types.ts` mirroring backend schemas; avoid `any`.
 - **Error handling:** API failures surface in UI states (loading / error / empty). A typed fetch wrapper (`src/lib/api/client.ts`) maps the backend error contract and retries once on 401 via refresh.
 - **API service organization:** all backend calls go through `src/lib/api/client.ts`; components never call raw endpoints.
+- **Map UI:** Leaflet 1.9 + react-leaflet 5 + leaflet-draw (`leaflet/dist/leaflet.css`, `leaflet-draw/dist/leaflet.draw.css`). The map component is imported with `next/dynamic` (`ssr: false`); use `L.divIcon` for markers (default Leaflet marker assets are not bundled). Tile provider is configurable via `NEXT_PUBLIC_MAP_TILE_URL` / `_ATTRIBUTION` / `_TILE_MAX_ZOOM`.
 - **Environment usage:** only `NEXT_PUBLIC_*` variables reach the browser. `BACKEND_URL` (server-side rewrite target) and `GEOAGENT_*` stay server-side.
 - **Auth:** HTTP-only cookies `geoagent_access` / `geoagent_refresh`; `src/middleware.ts` guards `/dashboard`; `src/lib/auth.tsx` provides `AuthProvider`/`useAuth`.
 
@@ -97,7 +99,7 @@ Each team member should complete this checklist on their own machine and confirm
 
 The following are intentionally deferred and will be set up as their phases begin:
 
-- Agent/provider tooling (ML/CV, geospatial processing libraries) — Phase 3+.
+- Agent/provider tooling (ML/CV, satellite/weather retrieval, LLM orchestration) — Phase 4+ (geocoding and geometry processing are already implemented in Phase 3).
 - CI pipeline — TBD, once the team agrees on a provider; suggested: lint + typecheck + backend tests on PRs (keep the test `GEOAGENT_AUTH_SECRET_KEY` in CI secrets, never the repo).
 - Redis caching/queues — later phases if needed.
 - Deployment (container registry, hosting, object storage) — Phase 4.

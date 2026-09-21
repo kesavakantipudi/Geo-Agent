@@ -40,5 +40,10 @@ class SavedLocationResponse(BaseModel):
     center_lat: float | None = None
     center_lon: float | None = None
     geometry: str | None = None  # EWKT text from the database
+    geometry_type: str | None = None
+    geometry_geojson: dict[str, Any] | None = None  # same geometry in GeoJSON
+    bbox: list[float] | None = None  # [minLon, minLat, maxLon, maxLat]
+    centroid: dict[str, float] | None = None  # {"lon": ..., "lat": ...}
+    area_m2_approx: float = 0.0
     created_at: datetime
     updated_at: datetime

@@ -2,7 +2,7 @@
 
 > An interactive multi-agent geospatial intelligence platform that turns satellite and environmental data into understandable analysis, historical insights, and conversational intelligence for any selected location.
 
-**Project status: Q1 — Phase 2: Application Foundation (in progress, backend verified).** The FastAPI backend (auth, organizations/workspaces RBAC, saved locations in PostGIS), its test suite, containerization, and a Next.js frontend shell are implemented; satellite/weather/agent features are still **planned**. Everything in this README that is not explicitly marked as *implemented* is **planned**.
+**Project status: Q1 — Phase 3: Location Intelligence implemented (backend + frontend verified).** The FastAPI backend (auth, organizations/workspaces RBAC, saved locations in PostGIS, provider-based geocoding, geometry validation, analysis-session drafts), its 66-test suite, and a Next.js frontend with an interactive Leaflet map canvas are implemented; satellite/weather retrieval and agent execution are still **planned**. Everything in this README that is not explicitly marked as *implemented* is **planned**.
 
 *Project inaugurated on September 14, 2026.*
 
@@ -71,14 +71,14 @@ A user selects a location and explicitly chooses the analyses they need (for exa
 
 ## Core features
 
-> **Planned — none are implemented yet.**
+> **Partially implemented (Phase 3).** Items marked *(implemented)* are working end to end; the rest remain **planned**.
 
-- Location and geographic-area selection (search, coordinates, map click, current location, polygon, rectangle, GeoJSON/KML upload).
-- Explicit selection of analysis modules (Agriculture, Water, Weather, Change Detection).
+- Location and geographic-area selection (search, coordinates, map click, polygon, rectangle, GeoJSON upload/paste) — **place search, polygon/rectangle drawing, GeoJSON import/export, and saved-location reuse implemented**.
+- Explicit selection of analysis modules (Agriculture, Water, Weather, Change Detection) — selection UI and persisted draft sessions **implemented**; agent execution planned.
 - Satellite imagery retrieval from free/open providers (Copernicus Sentinel-2, Sentinel-1, Landsat, and Microsoft Planetary Computer as a candidate).
 - Specialized agent analyses (Agri, Aqua, Weather, Change).
 - Historical change detection over selectable date ranges.
-- Interactive map with imagery, overlays, layers, and timeline controls.
+- Interactive map with imagery, overlays, layers, and timeline controls — **map canvas with AOI overlay implemented**; imagery/layer/timeline controls planned.
 - Conversational interface with the agents, grounded in the selected location and analysis.
 - Cross-agent reasoning that clearly distinguishes observations from possible explanations.
 - Analysis history and downloadable PDF reports.
@@ -105,11 +105,11 @@ Detailed planned responsibilities are in [`docs/agents.md`](docs/agents.md).
 
 | Layer | Technology | Status |
 | --- | --- | --- |
-| Backend | Python 3.12, FastAPI | **Implemented (Phase 2)** |
-| Frontend | Next.js 15, TypeScript, Tailwind CSS, React 19 | **Implemented (Phase 2, shell)** |
-| Geospatial database | PostgreSQL 16 + PostGIS 3.4 (Docker) | **Implemented (Phase 2)** |
+| Backend | Python 3.12, FastAPI, shapely, pyproj, httpx | **Implemented (Phases 2–3)** |
+| Frontend | Next.js 15, TypeScript, Tailwind CSS, React 19 | **Implemented (Phases 2–3)** |
+| Geospatial database | PostgreSQL 16 + PostGIS 3.4 (Docker) | **Implemented (Phases 2–3)** |
 | Satellite data | Copernicus Sentinel-2, Sentinel-1, Landsat, Microsoft Planetary Computer (candidate) | Planned |
-| Maps | Leaflet / MapLibre (TBD) | Planned |
+| Maps | Leaflet + react-leaflet + leaflet-draw | **Implemented (Phase 3)** |
 | ML/CV | PyTorch, rasterio, GDAL, OpenCV, NumPy, GeoPandas | Planned |
 | LLM orchestration | TBD (Phase 3, Q3) | Planned |
 | Caching / queues | Redis (where useful) | Planned |
@@ -124,10 +124,11 @@ The stack will be finalized during implementation phases.
 > **Status: partially implemented.** The segments below that say *implemented* are real working code; the rest of the diagram shows the planned target.
 
 ```
-Frontend (implemented: Next.js 15 / React 19 / Tailwind)
+Frontend (implemented: Next.js 15 / React 19 / Tailwind, Leaflet map canvas)
         │  /api/* proxied to the backend
         ▼
-FastAPI backend (implemented: auth, users, orgs, workspaces, saved locations, health)
+FastAPI backend (implemented: auth, users, orgs, workspaces, saved locations,
+                places/search, geometries/validate, analysis-sessions, health)
         │
         ▼
 GeoAgent Orchestrator (planned)
@@ -138,12 +139,12 @@ GeoAgent Orchestrator (planned)
         └── Change Agent (planned)
         │
         ▼
-Service layer — provider abstraction (planned)
+Service layer — provider abstraction (implemented: geocoding; planned: satellite, weather)
         │
-        ├── Satellite providers
-        ├── Weather providers
-        ├── Geocoding provider
-        └── Geospatial processing
+        ├── Satellite providers (planned)
+        ├── Weather providers (planned)
+        ├── Geocoding provider (implemented: Photon)
+        └── Geospatial processing (implemented: geometry validation/area via shapely/pyproj)
         │
         ▼
 Data layer (implemented: PostgreSQL 16 + PostGIS 3.4, Alembic-managed schema)
@@ -155,7 +156,7 @@ Detailed planned architecture and component responsibilities are in [`docs/archi
 
 ## Repository structure
 
-The current repository layout (Phase 2):
+The current repository layout (Phases 2–3):
 
 ```
 GeoAgent/
@@ -173,22 +174,23 @@ GeoAgent/
 ├── docs/                         # Project documentation
 │   ├── README.md                 # Documentation index
 │   ├── PROJECT_OVERVIEW.md       # Research-oriented overview
-│   ├── architecture.md           # Architecture (Phase 2 layers implemented)
+│   ├── architecture.md           # Architecture (Phases 2–3 layers implemented)
 │   ├── agents.md                 # Planned agent responsibilities
-│   ├── api-spec.md               # API spec (Phase 2 endpoints implemented)
+│   ├── api-spec.md               # API spec (Phase 2 + 3 endpoints implemented)
 │   ├── project-scpoe.md          # Scope summary
 │   └── project-management/
-│       ├── roadmap.md            # Q1–Q4 roadmap
+│       ├── roadmap.md            # Q1–Q4 roadmap with all planned phases
 │       ├── phase1-checklist.md   # Phase 1 checklist and acceptance criteria
-│       └── phase2-checklist.md   # Phase 2 checklist and verified checks
+│       ├── phase2-checklist.md   # Phase 2 checklist and verified checks
+│       └── phase3-checklist.md   # Phase 3 checklist and verified checks
 ├── .github/                      # GitHub issue and PR templates
 ├── backend/                      # FastAPI backend (implemented — see backend/README.md)
 │   ├── README.md
 │   ├── Dockerfile
 │   ├── pyproject.toml / uv.lock  # uv-managed Python project
-│   ├── alembic.ini + alembic/    # DB migrations (PostGIS, initial schema)
+│   ├── alembic.ini + alembic/    # DB migrations (PostGIS, initial + session config)
 │   ├── app/                      # API, models, schemas, services, core, db
-│   ├── tests/                    # pytest suite (21 tests, per-test PostGIS DB)
+│   ├── tests/                    # pytest suite (66 tests, per-test PostGIS DB)
 │   ├── agents/                    # Reserved for agent implementations
 │   ├── services/                  # Reserved for service/provider layer
 │   └── utils/                     # Reserved for shared utilities
@@ -196,7 +198,7 @@ GeoAgent/
 │   ├── README.md
 │   ├── Dockerfile
 │   ├── package.json
-│   └── src/                      # App Router pages, middleware, lib, components
+│   └── src/                      # App Router pages, middleware, lib, components (map/analysis UI)
 ├── data/                         # Reserved for datasets (never committed)
 │   ├── README.md
 │   ├── raw/
@@ -284,7 +286,7 @@ See [`.env.example`](.env.example) and the *Environment variables* section of [`
 
 ## Testing
 
-**Implemented for the backend.** `cd backend && uv run pytest -q` runs the suite (currently **21 tests**: health, auth with refresh rotation, organizations/workspaces RBAC, and saved locations) against a disposable PostGIS database provisioned per test; `uv run ruff check .` and `uv run ruff format --check .` keep the code formatted. Frontend checks: `cd frontend && npm run typecheck && npm run lint && npm run build`.
+**Implemented for the backend.** `cd backend && uv run pytest -q` runs the suite (currently **66 tests**: health, auth with refresh rotation, organizations/workspaces RBAC, saved locations, geometry validation, place search/geocoding, and analysis sessions) against a disposable PostGIS database provisioned per test; `uv run ruff check .` and `uv run ruff format --check .` keep the code formatted. Frontend checks: `cd frontend && npm run typecheck && npm run lint && npm run build`.
 
 Automated tests for the satellite/weather/agent modules, plus ML/evaluation checks, will be added as those modules are built. Evaluation metrics for analytical components are defined in [`PRD.md`](PRD.md) section 40 and [`docs/PROJECT_OVERVIEW.md`](docs/PROJECT_OVERVIEW.md) section 19.
 
@@ -301,9 +303,9 @@ Automated tests for the satellite/weather/agent modules, plus ML/evaluation chec
 
 The roadmap is **planned** and subject to refinement based on implementation progress. Full detail: [`docs/project-management/roadmap.md`](docs/project-management/roadmap.md).
 
-Phase 1 and Phase 2 progress is tracked in [`docs/project-management/phase1-checklist.md`](docs/project-management/phase1-checklist.md) and [`docs/project-management/phase2-checklist.md`](docs/project-management/phase2-checklist.md).
+Phase 1–3 progress is tracked in the phase checklists under [`docs/project-management/`](docs/project-management/).
 
-**Phase 2 status:** backend foundation verified (migrations round-trip on PostGIS, 21 tests green, ruff clean, live health checks ok, Docker image built and smoke-tested); frontend shell typechecks, lints, and builds. Remaining Phase 2 niceties listed in the phase-2 checklist (frontend image build, CI).
+**Phase 3 status:** location intelligence implemented — debounced place search (Photon), shapely/pyproj geometry validation and area measurement, polygon/rectangle AOI drawing + GeoJSON import/export on a Leaflet canvas, analysis-session drafts with date range, agents, and workspace scoping. Backend verified: migrations at head, **66 tests green**, ruff clean. Frontend verified: typecheck, lint, and production build green. Remaining Phase 3 niceties listed in the phase-3 checklist (CI, frontend Docker image, fresh-server boot smoke test).
 
 ---
 
