@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
@@ -117,7 +117,7 @@ export function SceneDiscoveryPanel({
     setOperationError(null);
     try {
       const records = await requestRetrieval(scene.id, [asset.key], sessionId);
-      setRetrievals((prev) => ({ ...prev, [scene.id]: records }));
+      setRetrievals((prev) => ({ ...prev, [scene.id]: records } as Record<number, RetrievalRecord[]>));
     } catch (err) {
       setOperationError(err instanceof ApiError ? err.message : "The asset could not be retrieved.");
     } finally {
@@ -130,7 +130,7 @@ export function SceneDiscoveryPanel({
     setOperationError(null);
     try {
       const records = await listRetrievals(scene.id);
-      setRetrievals((prev) => ({ ...prev, [scene.id]: records }));
+      setRetrievals((prev) => ({ ...prev, [scene.id]: records } as Record<number, RetrievalRecord[]>));
     } catch (err) {
       setOperationError(err instanceof ApiError ? err.message : "The retrieval history could not be loaded.");
     } finally {
