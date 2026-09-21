@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: geoagent-postgis
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: geoagent
+      POSTGRES_PASSWORD: geoagent
+      POSTGRES_DB: geoagent
+    ports:
+      # Host port 54932 avoids clashing with a locally installed PostgreSQL.
+      - "54932:5432"
+    volumes:
+      - geoagent_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U geoagent -d geoagent"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: geoagent-backend
+    restart: unless-stopped
+    environment:
+      GEOAGENT_APP_ENV: development
+      GEOAGENT_DATABASE_URL: postgresql+psycopg://geoagent:geoagent@db:5432/geoagent
+      GEOAGENT_CORS_ORIGINS: http://localhost:3000,http://localhost:3001
+      GEOAGENT_AUTH_SECRET_KEY: ${GEOAGENT_AUTH_SECRET_KEY:-dev-only-secret-please-override-0123456789ab}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        BACKEND_URL: http://backend:8000
+    container_name: geoagent-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  geoagent_pgdata:
