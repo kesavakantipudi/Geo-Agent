@@ -12,6 +12,7 @@ from app.api.v1.endpoints import (
     satellite,
     saved_locations,
     users,
+    weather,
     workspaces,
 )
 
@@ -26,3 +27,4 @@ api_router.include_router(places.router)
 api_router.include_router(geometries.router)
 api_router.include_router(analysis_sessions.router)
 api_router.include_router(satellite.router)
+api_router.include_router(weather.router)

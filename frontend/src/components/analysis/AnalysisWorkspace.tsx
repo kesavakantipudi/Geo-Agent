@@ -8,6 +8,7 @@ import {
   type AnalysisConfig,
 } from "@/components/analysis/AnalysisConfigPanel";
 import { SessionsList } from "@/components/analysis/SessionsList";
+import { WeatherDiscoveryPanel } from "@/components/analysis/WeatherDiscoveryPanel";
 import { AoiPanel } from "@/components/map/AoiPanel";
 import { PlaceSearch } from "@/components/map/PlaceSearch";
 import type { DrawMode } from "@/components/map/LocationMap";
@@ -39,7 +40,7 @@ const LocationMap = dynamic(
     ssr: false,
     loading: () => (
       <div className="flex h-full w-full items-center justify-center bg-zinc-100 text-sm text-zinc-400">
-        Loading map…
+        Loading mapâ€¦
       </div>
     ),
   },
@@ -330,6 +331,22 @@ export function AnalysisWorkspace() {
           loading={sessionsLoading}
           onReopen={handleReopen}
         />
+      </Section>
+
+      <Section title="Weather observations">
+        {activeSession ? (
+          <WeatherDiscoveryPanel
+            sessionId={activeSession.id}
+            aoi={aoi}
+            startDate={config.startDate}
+            endDate={config.endDate}
+          />
+        ) : (
+          <p className="text-xs text-zinc-500">
+            Save or reopen an analysis session to fetch weather observations for its AOI and
+            date range.
+          </p>
+        )}
       </Section>
     </div>
   );

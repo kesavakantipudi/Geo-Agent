@@ -102,6 +102,30 @@ class Settings(BaseSettings):
     retrieval_url_allowlist: str = ""  # extra allowed download hosts, comma-separated
     retrieval_timeout_seconds: float = 60.0
 
+    # Weather & environmental data (Phase 5). Providers are pluggable via env;
+    # "none" (or an empty list) disables weather retrieval. The default provider
+    # is Open-Meteo (a non-commercial service: <10 000 calls/day, no API key,
+    # attribution required — "Weather data by Open-Meteo.com"). UA + attribution
+    # strings are configured so responses always carry provenance, and the
+    # non-commercial flag is surfaced to operators.
+    weather_enabled_providers: str = "openmeteo"  # comma-separated
+    weather_max_points_per_aoi: int = 20
+    weather_max_variables: int = 20
+    weather_timeout_seconds: float = 30.0
+    weather_rate_per_second: float = 0.0  # 0 disables throttling
+    weather_cache_ttl_seconds: int = 3600
+    weather_attribution: str = "Weather data by Open-Meteo.com"
+    weather_user_agent: str = "GeoAgent/0.1 (Phase 5 weather development)"
+    weather_noncommercial: bool = True
+    # Open-Meteo endpoints (forecast/current + archive + historical-forecast).
+    openmeteo_forecast_url: str = "https://api.open-meteo.com/v1/forecast"
+    openmeteo_archive_url: str = "https://archive-api.open-meteo.com/v1/archive"
+    openmeteo_historical_forecast_url: str = (
+        "https://historical-forecast-api.open-meteo.com/v1/forecast"
+    )
+    openmeteo_timeout_seconds: float = 30.0
+    openmeteo_rate_per_second: float = 0.0  # 0 disables throttling
+
     @model_validator(mode="after")
     def _validate_secret_key(self) -> Settings:
         if self.app_env != "test" and (not self.auth_secret_key or len(self.auth_secret_key) < 32):

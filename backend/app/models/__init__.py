@@ -18,7 +18,10 @@ from app.models.satellite_scene import (
 )
 from app.models.saved_location import SavedLocation
 from app.models.user import User
-from app.models.weather_observation import WeatherObservation
+from app.models.weather_observation import (
+    WeatherObservation,
+    WeatherObservationDiscovery,
+)
 from app.models.workspace import Workspace, WorkspaceMember
 
 __all__ = [
@@ -37,6 +40,7 @@ __all__ = [
     "SavedLocation",
     "User",
     "WeatherObservation",
+    "WeatherObservationDiscovery",
     "Workspace",
     "WorkspaceMember",
 ]

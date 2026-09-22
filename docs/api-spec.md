@@ -1,8 +1,24 @@
 # GeoAgent — API Specification
 
-> **Status:** Phase 3 (Location Intelligence) is implemented on top of Phase 2: `GET /places/search` (provider-based geocoding), `POST /geometries/validate` (strict GeoJSON parsing + shapely/pyproj validation and area estimation), full `analysis-sessions` CRUD (AOI, date range, agent selection), and an enriched saved-locations response (geometry type/GeoJSON, bbox, centroid, area). The suite has 66 passing integration tests. Endpoints below not yet implemented remain planned; planned modules stay as recorded design intent.
+> **Status:** Phase 4 (Satellite Intelligence) and Phase 5 (Weather Intelligence) are implemented on top of Phases 2–3. Phase 5 adds `POST /weather/search` (provider-backed weather observation retrieval), `GET /weather/sessions/{id}/observations`, and `GET /weather/observations/{id}` — session-scoped, provenance-annotated, real provider values only (missing data stays missing, never fabricated as `0`). The suite has 106 passing integration tests. Endpoints below not yet implemented remain planned; planned modules stay as recorded design intent.
 
 Reference: [`PRD.md`](../PRD.md) §28.
+
+## 9. Phase 5 — implemented endpoints (weather observation retrieval)
+
+Base path `/api/v1`, same cookie/bearer auth and error contract. All retrieval follows the satellite pattern: requests reference an analysis session (whose AOI and date range drive the provider queries) or an inline AOI + date range. Every observation records provenance (provider, model, data type, grid cell, timezone), units, and the provider attribution string.
+
+Error codes added in Phase 5: `aoi_required`, `date_range_required`, `weather_variable_unknown`, `weather_too_many_variables`, `weather_provider_not_enabled`, `weather_disabled`, `weather_observation_not_found` (plus existing `aoi_not_polygon` from geometry validation).
+
+| Method | Path | Summary |
+| --- | --- | --- |
+| `POST` | `/weather/search` | Body: `{analysis_session_id?, aoi?, start_date?, end_date?, variables?, model?, timezone?, units?, data_type?, providers?}`. `analysis_session_id` (recommended) supplies AOI + dates when omitted. `data_type` ∈ `current, forecast, history, archive, reanalysis, historical_forecast` (`current`/`forecast` use the forecast endpoint; history-family types use the archive and **require** `start_date`+`end_date`). `units` ∈ `metric, imperial`; `variables` from a fixed registry (default `temperature_2m, relative_humidity_2m`); `providers` optional subset of enabled providers. Returns `{observations: [WeatherPointSummary], providers: [{provider, observations, error}], truncated}`. Cap bounds: `GEOAGENT_WEATHER_MAX_POINTS_PER_AOI` rows and `GEOAGENT_WEATHER_MAX_VARIABLES` variables. Missing provider values are `None` and are skipped — never stored as `0`. Provider HTTP/timeout failures surface as a per-provider `error` (HTTP 200) rather than failing the request. |
+| `GET` | `/weather/sessions/{session_id}/observations` | Previously persisted observations for a session (owner or workspace member), newest first. |
+| `GET` | `/weather/observations/{observation_id}` | Single stored observation with access control (must belong to one of the caller's sessions); else `404 weather_observation_not_found`. |
+
+`WeatherPointSummary`: `{id, provider, model, data_type, variable, observed_at, timezone, value, units, units_doc, latitude, longitude, provenance, attribution}` — one row per variable per timestamp per point.
+
+Provider: Open-Meteo (default; `GEOAGENT_WEATHER_ENABLED_PROVIDERS`), a non-commercial service — every observation carries `attribution = "Weather data by Open-Meteo.com"`. The Open-Meteo bbox contract is `(min_lat, min_lon, max_lat, max_lon)`; the service converts the geometry bbox `[min_lon, min_lat, max_lon, max_lat]` accordingly.
 
 ## 8. Phase 3 — implemented endpoints
 

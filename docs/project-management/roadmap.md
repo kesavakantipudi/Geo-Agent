@@ -1,16 +1,16 @@
 # GeoAgent — Roadmap (Q1–Q4)
 
-> **Status: PLANNED.** This roadmap is subject to refinement based on implementation progress. Quarter boundaries are indicative; a 4-member team should re-plan after each quarter review. Target completion: **January 2027**.
+> **Status: IN PROGRESS — Phases 1–5 implemented.** This roadmap is subject to refinement based on implementation progress. Quarter boundaries are indicative; a 4-member team should re-plan after each quarter review. Target completion: **January 2027**.
 
 ## Q1 — Foundation
 
 | Phase | Deliverable focus |
 | --- | --- |
 | **Phase 1 — Engineering Foundation** | Repository organization, docs, standards, env config, project-management readiness. *(Completed — see phase1-checklist.)* |
-| **Phase 2 — Application Foundation** | Backend (FastAPI) and frontend (Next.js) skeletons, PostgreSQL/PostGIS setup, API structure, environment wiring. |
+| **Phase 2 — Application Foundation** | Backend (FastAPI) and frontend (Next.js) skeletons, PostgreSQL/PostGIS setup, API structure, environment wiring. *(Implemented.)* |
 | **Phase 3 — Location Intelligence** | Location search/selection, AOI geometry, geocoding provider abstraction. *(Implemented — see phase3-checklist.)* |
-| **Phase 4 — Satellite Intelligence Infrastructure** | Satellite data retrieval, provider abstraction, imagery handling, caching. |
-| **Phase 5 — Weather and Environmental Infrastructure** | Weather provider abstraction, historical/forecast retrieval. |
+| **Phase 4 — Satellite Intelligence Infrastructure** | Satellite data retrieval, provider abstraction, imagery handling, caching. *(Implemented.)* |
+| **Phase 5 — Weather and Environmental Infrastructure** | Weather provider abstraction, historical/forecast retrieval. *(Implemented — see phase5-checklist.)* |
 
 ## Q2 — Geospatial Intelligence
 
