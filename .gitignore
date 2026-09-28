@@ -27,6 +27,10 @@ eggs/
 .eggs/
 lib/
 lib64/
+# The Python `lib/` rule above also matches frontend/src/lib (the typed API
+# client layer). Re-include it so frontend source is tracked.
+!frontend/src/lib/
+!frontend/src/lib/**
 parts/
 sdist/
 var/
