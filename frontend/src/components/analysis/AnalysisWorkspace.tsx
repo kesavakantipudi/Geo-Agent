@@ -8,6 +8,7 @@ import {
   type AnalysisConfig,
 } from "@/components/analysis/AnalysisConfigPanel";
 import { SessionsList } from "@/components/analysis/SessionsList";
+import { AgriPanel } from "@/components/analysis/AgriPanel";
 import { WeatherDiscoveryPanel } from "@/components/analysis/WeatherDiscoveryPanel";
 import { AoiPanel } from "@/components/map/AoiPanel";
 import { PlaceSearch } from "@/components/map/PlaceSearch";
@@ -345,6 +346,17 @@ export function AnalysisWorkspace() {
           <p className="text-xs text-zinc-500">
             Save or reopen an analysis session to fetch weather observations for its AOI and
             date range.
+          </p>
+        )}
+      </Section>
+
+      <Section title="Agricultural intelligence">
+        {activeSession ? (
+          <AgriPanel sessionId={activeSession.id} aoi={aoi} />
+        ) : (
+          <p className="text-xs text-zinc-500">
+            Save or reopen an analysis session to compute vegetation indices (NDVI) over its AOI
+            from Sentinel-2 scenes.
           </p>
         )}
       </Section>

@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
+    agri,
     analysis_sessions,
     auth,
     geometries,
@@ -28,3 +29,4 @@ api_router.include_router(geometries.router)
 api_router.include_router(analysis_sessions.router)
 api_router.include_router(satellite.router)
 api_router.include_router(weather.router)
+api_router.include_router(agri.router)

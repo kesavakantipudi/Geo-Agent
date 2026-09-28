@@ -5,6 +5,7 @@ Alembic autogenerate and for foreign-key resolution.
 """
 
 from app.models.agent_result import AgentResult
+from app.models.agri_analysis import AgriAnalysis
 from app.models.analysis import AnalysisRequest, AnalysisSession
 from app.models.chat_message import ChatMessage
 from app.models.organization import Organization, OrganizationMember
@@ -26,6 +27,7 @@ from app.models.workspace import Workspace, WorkspaceMember
 
 __all__ = [
     "AgentResult",
+    "AgriAnalysis",
     "AnalysisRequest",
     "AnalysisSession",
     "ChatMessage",

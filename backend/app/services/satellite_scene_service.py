@@ -154,6 +154,12 @@ def get_scene(db: Session, actor_id: int, scene_id: int) -> dict[str, Any]:
     return _scene_summary(scene, geometry)
 
 
+def get_scene_orm(db: Session, actor_id: int, scene_id: int) -> SatelliteScene:
+    """Authorized scene ORM row (assets/retrievals loadable), for derived analyses."""
+    scene, _ = _scene_for_user(db, actor_id, scene_id)
+    return scene
+
+
 def retrieve_assets(
     db: Session,
     actor_id: int,

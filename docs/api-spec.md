@@ -1,8 +1,26 @@
 # GeoAgent — API Specification
 
-> **Status:** Phase 4 (Satellite Intelligence) and Phase 5 (Weather Intelligence) are implemented on top of Phases 2–3. Phase 5 adds `POST /weather/search` (provider-backed weather observation retrieval), `GET /weather/sessions/{id}/observations`, and `GET /weather/observations/{id}` — session-scoped, provenance-annotated, real provider values only (missing data stays missing, never fabricated as `0`). The suite has 106 passing integration tests. Endpoints below not yet implemented remain planned; planned modules stay as recorded design intent.
+> **Status:** Phases 2–5 and Phase 6A (Agri Agent) are implemented. Phase 6A adds `POST /agri/analyze` (windowed spectral-index computation over locally retrieved band assets), `GET /agri/analyses/{id}`, and `GET /agri/sessions/{id}/analyses` — deterministic NDVI only, with explicit `unavailable` states (HTTP 200) instead of fabricated numbers, provenance-rich processing metadata, documented heuristic tier thresholds, and persisted completed results. The suite has 147 passing integration tests. Endpoints below not yet implemented remain planned; planned modules stay as recorded design intent.
 
 Reference: [`PRD.md`](../PRD.md) §28.
+
+## 10. Phase 6A — implemented endpoints (agricultural intelligence)
+
+Base path `/api/v1`, same cookie/bearer auth and error contract. Analysis is anchored to an analysis session (its AOI and access rules) and a satellite **scene** whose band assets were already retrieved via the Phase 4 `/satellite` endpoints. Computations use windowed raster reads only (never whole-image loads) and never resample reflectance — if band grids do not align, the analysis is reported `unavailable`, not silently interpolated.
+
+| Method | Path | Summary |
+| --- | --- | --- |
+| `POST` | `/agri/analyze` | Body: `{analysis_session_id, scene_id, aoi?, indices?=["ndvi"], mask_clouds?=true}`. `aoi` is an optional per-call override (defaults to the session AOI). Returns `{results: [AgriAnalysisResult]}` — one result per requested index. Only `ndvi` is registered (`agri_index_unsupported` for anything else). |
+| `GET` | `/agri/analyses/{analysis_id}` | A single completed analysis (owner or workspace member); only completed results are persisted. |
+| `GET` | `/agri/sessions/{session_id}/analyses` | Completed analyses for a session (owner or workspace member), newest first. |
+
+`AgriAnalysisResult` fields (completed): `id`, `status`, `scene` (`AgriSceneReference`), `index` (`AgriIndexInfo` — name/label/formula/band_roles/units/range/description), `acquisition_date`, `cloud` (`AgriCloudInfo` — requested masking, whether the SCL mask was actually available, masked SCL classes `[0,1,3,8,9,10,11]`), `statistics` (`min, max, mean, median, stddev, valid_pixel_count, aoi_pixel_count, valid_pixel_pct, excluded_pixel_pct, sampled_area_m2, units, range`), `classification` (overall tier + dominant tier + per-tier `pixel_pct` + `threshold_source`), `bands` (role → asset_key → retrieval_id provenance), `processing` (algorithm `geoagent-ndvi-v1`, processor, library versions, window, pixel area, masked classes, `zero_as_nodata`), `warnings`, `created_at`.
+
+`unavailable` results carry `status:"unavailable"`, `unavailable: {code, reason, details[]}`, and the scene reference — returned as HTTP 200 (the request was valid; the data could not be computed faithfully) and **not persisted**.
+
+New error codes in Phase 6: validation `agri_index_unsupported`, `agri_index_required`, `session_has_no_aoi`; runtime `agri_service_unavailable` (HTTP 503). Per-result unavailable codes: `provider_unsupported` (no band-role map for the provider), `bands_not_retrieved` (B04/B08 not retrieved — or SCL if masking was explicitly requested and available), `band_read_failed`, `crs_transform_failed`, `no_overlap`, `aoi_window_too_large`, `band_grid_mismatch` (reflectance never resampled), `insufficient_valid_pixels`.
+
+NDVI is computed `(B08 − B04) / (B08 + B04 + eps)` from Level-2A reflectance and is carved to the scene window that overlaps the AOI bbox (capped at `GEOAGENT_AGRI_MAX_WINDOW_PIXELS`); cloud/quality masking via SCL removes classes `[0,1,3,8,9,10,11]`. When the scene/provider lacks SCL, `mask_clouds: true` falls back to an unmasked analysis **with a warning** (cloud-masking is optional, not a hard failure). Tiers are heuristic and clearly labeled in responses and docs — see `docs/scientific-methodology.md`.
 
 ## 9. Phase 5 — implemented endpoints (weather observation retrieval)
 

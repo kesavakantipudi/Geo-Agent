@@ -126,6 +126,14 @@ class Settings(BaseSettings):
     openmeteo_timeout_seconds: float = 30.0
     openmeteo_rate_per_second: float = 0.0  # 0 disables throttling
 
+    # Agricultural intelligence (Phase 6A). Deterministic spectral-index analysis
+    # over retrieved Sentinel-2 band assets. Windowed reads keep memory bounded
+    # even on large tiles; analyses that cannot produce a faithful result over the
+    # AOI (e.g. almost everything masked) are reported as explicit "unavailable"
+    # states rather than fabricated numbers.
+    agri_min_valid_fraction: float = 0.01
+    agri_max_window_pixels: int = 20_000_000
+
     @model_validator(mode="after")
     def _validate_secret_key(self) -> Settings:
         if self.app_env != "test" and (not self.auth_secret_key or len(self.auth_secret_key) < 32):
