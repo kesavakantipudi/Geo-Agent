@@ -701,6 +701,206 @@ export interface ChangeDetectionRequest {
   include_weather: boolean;
 }
 
+export type HistoricalEventName =
+  | "vegetation_increase"
+  | "vegetation_decrease"
+  | "vegetation_stable"
+  | "water_expansion"
+  | "water_reduction"
+  | "water_stable";
+
+export interface HistoricalSceneReference {
+  id: number;
+  scene_id: string;
+  provider: string;
+  platform: string | null;
+  acquisition_date: string;
+  cloud_cover: number | null;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface HistoricalMetricStatistics {
+  min: number | null;
+  max: number | null;
+  mean: number | null;
+  median: number | null;
+  stddev: number | null;
+  valid_pixel_count: number;
+  aoi_pixel_count: number;
+  valid_pixel_pct: number;
+  excluded_pixel_pct: number;
+  sampled_area_m2: number;
+  units: string;
+  range: [number, number];
+}
+
+export interface HistoricalWaterSummary {
+  pixel_count: number;
+  pixel_pct: number;
+  area_m2: number;
+  pct_of_aoi_area: number;
+  aoi_area_m2: number;
+}
+
+export interface HistoricalVegetationMetric {
+  status: ChangeStatus;
+  index: ChangeIndexInfo | null;
+  statistics: HistoricalMetricStatistics | null;
+  warnings: string[];
+  unavailable: ChangeUnavailableInfo | null;
+}
+
+export interface HistoricalWaterMetric {
+  status: ChangeStatus;
+  index: ChangeIndexInfo | null;
+  statistics: HistoricalMetricStatistics | null;
+  water: HistoricalWaterSummary | null;
+  warnings: string[];
+  unavailable: ChangeUnavailableInfo | null;
+}
+
+export interface HistoricalObservation {
+  date: string;
+  index: number;
+  scene: HistoricalSceneReference;
+  vegetation: HistoricalVegetationMetric | null;
+  water: HistoricalWaterMetric | null;
+  weather_context: WeatherContext | null;
+}
+
+export interface HistoricalEventClassArea {
+  pixel_count: number;
+  pixel_pct: number;
+  area_m2?: number | null;
+}
+
+export interface HistoricalChangedRegion {
+  increased: HistoricalEventClassArea | null;
+  decreased: HistoricalEventClassArea | null;
+  stable: HistoricalEventClassArea | null;
+  changed_total: HistoricalEventClassArea | null;
+}
+
+export interface HistoricalWaterExtent {
+  before_pixels: number;
+  after_pixels: number;
+  delta_pixels: number;
+  before_pct: number;
+  after_pct: number;
+  added: HistoricalEventClassArea | null;
+  lost: HistoricalEventClassArea | null;
+  persistent: HistoricalEventClassArea | null;
+  unchanged: HistoricalEventClassArea | null;
+}
+
+export interface HistoricalEventClassification {
+  event: HistoricalEventName;
+  label: string;
+  basis: string;
+  threshold: number;
+  boundary: string;
+  comparison_pixels: number;
+  comparison_valid_pct: number;
+  limitations_note: string;
+  region: HistoricalChangedRegion | null;
+  water_extent: HistoricalWaterExtent | null;
+}
+
+export interface HistoricalEvent {
+  type: ChangeType;
+  status: ChangeStatus;
+  start_date: string;
+  end_date: string;
+  gap_days: number;
+  before: HistoricalSceneReference | null;
+  after: HistoricalSceneReference | null;
+  statistics: ChangeStatistics | null;
+  classification: HistoricalEventClassification | null;
+  mask: ChangeMask | null;
+  warnings: string[];
+  unavailable: ChangeUnavailableInfo | null;
+}
+
+export interface HistoricalTrendPoint {
+  date: string;
+  value: number | null;
+  valid_pixel_pct: number | null;
+}
+
+export interface HistoricalTrend {
+  type: ChangeType;
+  observations: number;
+  period: { start: string | null; end: string | null };
+  first: HistoricalTrendPoint | null;
+  latest: HistoricalTrendPoint | null;
+  minimum: HistoricalTrendPoint | null;
+  maximum: HistoricalTrendPoint | null;
+  absolute_change: number | null;
+  relative_change_pct: number | null;
+  basis: string;
+  note: string;
+}
+
+export interface HistoricalCoverageGap {
+  from_date: string;
+  to_date: string;
+  gap_days: number;
+}
+
+export interface HistoricalCoverage {
+  observation_count: number;
+  start_date: string | null;
+  end_date: string | null;
+  temporal_span_days: number | null;
+  ordered_by: string;
+  gaps: HistoricalCoverageGap[];
+  compared_pairs: number;
+  same_day_pairs_skipped: number;
+  limited: boolean;
+  notes: string[];
+}
+
+export interface HistoricalProvenance {
+  engine_version: string;
+  derived_on_demand: boolean;
+  ordering_semantics: string;
+  change_reuse: string;
+  area_method: string;
+  libraries: Record<string, string>;
+  analyzed_at: string;
+}
+
+export interface HistoricalResponse {
+  status: ChangeStatus;
+  session: {
+    id: number;
+    title: string | null;
+    start_date: string | null;
+    end_date: string | null;
+  };
+  types_requested: string[];
+  coverage: HistoricalCoverage;
+  observations: HistoricalObservation[];
+  events: HistoricalEvent[];
+  trends: Record<string, HistoricalTrend>;
+  weather_contexts: WeatherContext[] | null;
+  summary: string;
+  provenance: HistoricalProvenance;
+  warnings: string[];
+  unavailable: ChangeUnavailableInfo | null;
+}
+
+export interface HistoricalRequest {
+  analysis_session_id: number;
+  types: ChangeType[];
+  mask_clouds: boolean;
+  include_weather: boolean;
+  vegetation_threshold?: number | null;
+  water_threshold?: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
+}
+
 export interface AnalysisSession {
   id: number;
   user_id: number;

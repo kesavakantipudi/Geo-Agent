@@ -1,8 +1,73 @@
 # GeoAgent — API Specification
 
-> **Status:** Phases 2–5, Phase 6A (Agri Agent), Phase 6B (Aqua Agent), Phase 6C (Weather Context), and Phase 6D (Change Detection) are implemented. Phase 6B adds `POST /aqua/analyze` — deterministic NDWI open-water detection over locally retrieved band assets, sharing the Phase 6A windowed index core (`app/services/geospatial`). Unlike Agri, Aqua results are **derived on demand and never persisted** (no `aqua_analyses` table, no GET endpoints); every call recomputes from the retrieved bands, so there is nothing to go stale. It honors the same explicit `unavailable` states (HTTP 200, never fabricated numbers) and provenance-rich metadata. Phase 6C adds `POST /weather/context` (weather context around a satellite observation, aligned with the acquisition day ± a configured window, and aggregates **stored** Phase 5 observations without ever calling a provider). Phase 6D adds `POST /change-detection/analyze` (deterministic two-scene comparison of NDVI/NDWI over the session AOI, derived on demand and never persisted). The suite has 257 passing integration tests. Endpoints below not yet implemented remain planned; planned modules stay as recorded design intent.
+> **Status:** Phases 2–5, Phase 6A (Agri Agent), Phase 6B (Aqua Agent), Phase 6C (Weather Context), Phase 6D (Change Detection), and Phase 6E (Historical Intelligence) are implemented. Phase 6B adds `POST /aqua/analyze` — deterministic NDWI open-water detection over locally retrieved band assets, sharing the Phase 6A windowed index core (`app/services/geospatial`). Unlike Agri, Aqua results are **derived on demand and never persisted** (no `aqua_analyses` table, no GET endpoints); every call recomputes from the retrieved bands, so there is nothing to go stale. It honors the same explicit `unavailable` states (HTTP 200, never fabricated numbers) and provenance-rich metadata. Phase 6C adds `POST /weather/context` (weather context around a satellite observation, aligned with the acquisition day ± a configured window, and aggregates **stored** Phase 5 observations without ever calling a provider). Phase 6D adds `POST /change-detection/analyze` (deterministic two-scene comparison of NDVI/NDWI over the session AOI, derived on demand and never persisted). Phase 6E adds `POST /historical/analyze` — a derived-on-demand timeline over the session's discovered scenes (oldest → newest by acquisition date), reusing the shared index core per observation and the Phase 6D engine for consecutive pairs, with explicit coverage, gaps, and descriptive (never forecasting) trends. The suite has 291 passing integration tests. Endpoints below not yet implemented remain planned; planned modules stay as recorded design intent.
 
 Reference: [`PRD.md`](../PRD.md) §28.
+
+## 14. Phase 6E — implemented endpoint (historical intelligence)
+
+Base path `/api/v1`, same cookie/bearer auth and error contract. The analysis is
+anchored to an analysis session the caller can access; the **session is
+authoritative** for its AOI, access rules and base date range (no AOI override in
+6E). Every discovered scene in the session becomes one **observation**, ordered
+**oldest → newest by acquisition date** (parsed from each scene's STAC datetime,
+never from ingestion/retrieval order) and deduplicated by scene. Results are
+**derived on demand and never persisted** — there are no GET endpoints and **no
+database migration**.
+
+| Method | Path | Summary |
+| --- | --- | --- |
+| `POST` | `/historical/analyze` | Body: `{analysis_session_id, types?=["vegetation","water"], mask_clouds?=true, include_weather?=true, vegetation_threshold?, water_threshold?, start_date?, end_date?}`. Returns `HistoricalResponse`. |
+
+The timeline reuses the shared geospatial index core (Phase 6A/6B semantics) for
+each observation — NDVI for vegetation, NDWI for water (reusing the documented
+Aqua water boundary) — and reuses the Phase 6D change-detection engine
+(`compute_change_index`) for each **consecutive** pair. Per-observation metrics use
+the agri / aqua windowing and valid-fraction settings; events use the `change_*`
+settings.
+
+| Block | Contents |
+| --- | --- |
+| `session` | `{id, title, start_date, end_date}` — the authoritative session reference. |
+| `coverage` | `observation_count`, `start_date`, `end_date`, `temporal_span_days`, `ordered_by`, `gaps[]` (`from_date`, `to_date`, `gap_days`), `compared_pairs`, `same_day_pairs_skipped`, `limited`, `notes[]`. |
+| `observations[]` | `date`, `index` (0-based chronological position), `scene`, one metric per requested type, `weather_context`. |
+| `events[]` | One per consecutive pair per requested type: `start_date`, `end_date`, `gap_days`, `before`, `after`, `statistics`, `classification`, `mask`, `warnings`, `unavailable`. |
+| `trends` | Per type: `observations`, `period`, `first`, `latest`, `minimum`, `maximum`, `absolute_change`, `relative_change_pct`, `basis`, `note`. |
+| `summary` / `warnings` / `provenance` | Descriptive narrative, collected warnings, and `engine_version: "geoagent-historical-intelligence-v1"`, `derived_on_demand: true`, `ordering_semantics`, `change_reuse`, `area_method`, `libraries`, `analyzed_at`. |
+
+Ordering is defensive: ties on acquisition date are broken by scene id for
+determinism. Observations that **share** an acquisition date are kept on the
+timeline but never compared (`same_day_pairs_skipped`, with a coverage note), since
+they cannot be temporally ordered. Irregular temporal gaps are reported in
+`coverage.gaps` and **never interpolated**.
+
+Event classification is deterministic and measurable (never inferred):
+`vegetation_increase` / `vegetation_decrease` when one class dominates by pixel
+count over pixels valid in both observations (ties → `vegetation_stable`);
+`water_expansion` / `water_reduction` by the net new-vs-lost water-pixel balance
+(ties → `water_stable`). Trends are descriptive only — first/latest/min/max plus
+absolute (and relative) change — and `basis` states the evidence they rest on
+(e.g. "Single observation; no change computed."), never extrapolating.
+
+Missing data stays missing: an observation whose required bands are absent is a
+`status: "unavailable"` node with a structured reason, never a zero. Per-observation
+unavailable codes: `provider_unsupported`, `bands_not_retrieved`,
+`insufficient_valid_pixels`, plus any raised by the shared index core; event nodes
+additionally carry the Phase 6D codes. Top-level `status` is `unavailable` with
+`no_historical_observations` (no scenes in range) or
+`all_requested_analyses_unavailable` (nothing completed); otherwise `completed`.
+
+400 validation codes: `session_has_no_aoi`, `historical_type_required`,
+`historical_type_unsupported`, `invalid_vegetation_threshold` (validated `(0, 2]`),
+`invalid_water_threshold` (validated `[−1, 1]`), `invalid_date_range` (dates must be
+provided together, start ≤ end), `date_range_outside_session` (an optional date
+override must stay inside the session range).
+
+Weather: with `include_weather: true` (default), one descriptive `WeatherContext`
+per observation (oldest → newest) is attached via the configured default window and
+variables, and `weather_contexts` mirrors them — observation reference only, never a
+causal claim. This feature is **descriptive and analytical only**: it performs no
+forecasting and no causal attribution — see `docs/scientific-methodology.md`.
 
 ## 13. Phase 6D — implemented endpoint (change detection)
 

@@ -11,6 +11,7 @@ import { SessionsList } from "@/components/analysis/SessionsList";
 import { AgriPanel } from "@/components/analysis/AgriPanel";
 import { AquaPanel } from "@/components/analysis/AquaPanel";
 import { ChangeDetectionPanel } from "@/components/analysis/ChangeDetectionPanel";
+import { HistoricalIntelligencePanel } from "@/components/analysis/HistoricalIntelligencePanel";
 import { WeatherDiscoveryPanel } from "@/components/analysis/WeatherDiscoveryPanel";
 import { AoiPanel } from "@/components/map/AoiPanel";
 import { PlaceSearch } from "@/components/map/PlaceSearch";
@@ -390,6 +391,22 @@ export function AnalysisWorkspace() {
           <p className="text-xs text-zinc-500">
             Save or reopen an analysis session to compare vegetation (NDVI) and water (NDWI)
             between two Sentinel-2 scenes.
+          </p>
+        )}
+      </Section>
+
+      <Section title="Historical intelligence">
+        {activeSession ? (
+          <HistoricalIntelligencePanel
+            sessionId={activeSession.id}
+            aoiPresent={aoi !== null}
+            overlay={changeOverlay}
+            onOverlayChange={setChangeOverlay}
+          />
+        ) : (
+          <p className="text-xs text-zinc-500">
+            Save or reopen an analysis session to build a historical timeline (oldest → newest)
+            across its discovered scenes.
           </p>
         )}
       </Section>

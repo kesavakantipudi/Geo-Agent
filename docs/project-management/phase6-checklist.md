@@ -376,10 +376,99 @@ never fabricated numbers. Change is defined only over pixels valid in both obser
 - [x] `docs/project-management/roadmap.md` — 6D completed point.
 - [x] `.env.example` + `backend/.env.example` — `GEOAGENT_CHANGE_*` vars documented.
 
-## Phase 6E — Historical intelligence (planned)
+## Phase 6E - Historical intelligence (complete)
 
-- [ ] Date-range workflows, per-period snapshots, comparison timelines, provenance across
-      time.
+Session-scoped **timeline over discovered scenes**, derived on demand (no migration,
+nothing persisted).
+
+### Timeline core (`app/services/historical_service.py`)
+
+- [x] Session is authoritative: AOI, access rules, base date range. No AOI override.
+- [x] Observations ordered **oldest → newest by acquisition date** (STAC datetime, never
+      ingestion/retrieval order), deduplicated by scene, ties broken by id.
+- [x] `coverage` always explicit: count, first/last date, span, ordering, `compared_pairs`,
+      `same_day_pairs_skipped`, `limited`, gaps (`gap_days`) and notes.
+- [x] Same-day pairs are **never compared**; irregular gaps are reported, never
+      interpolated.
+- [x] Optional date override: both-or-none, `end >= start`, must stay inside the session
+      range (`invalid_date_range`, `date_range_outside_session`).
+
+### Reuse (no duplicated index math)
+
+- [x] Per-observation metrics via the shared core `analyze_index_ratio` — agri settings for
+      NDVI, aqua settings + `water_summary` for NDWI (identical §2/§4 semantics).
+- [x] Consecutive-pair events via the Phase 6D engine `compute_change_index` (same alignment,
+      comparison mask, inclusive boundaries, class areas, masks, statistics).
+- [x] `resolve_band_keys` + `completed_retrieval_paths` for role→asset resolution;
+      `analysis_session_service.get` / `validate_date_range` for access + ranges;
+      `satellite_scene_service.list_scenes_for_session` for scene discovery;
+      `weather_context_service.default_context` for descriptive weather.
+
+### Deterministic labels and descriptive trends
+
+- [x] Vegetation event = dominant class by pixel count over comparison-valid pixels
+      (tie → `vegetation_stable`); water event = net new-vs-lost balance (tie →
+      `water_stable`). Basis text shipped with every event.
+- [x] Trends = first/latest/min/max + absolute (and relative) change + contributing
+      observation count + evidence-capped `basis`; no extrapolation, no forecasting.
+
+### Honesty contract
+
+- [x] Missing stays missing: per-observation and per-event `status: "unavailable"` nodes with
+      structured codes (`bands_not_retrieved`, `provider_unsupported`,
+      `insufficient_valid_pixels`); top-level `no_historical_observations` /
+      `all_requested_analyses_unavailable`.
+- [x] Weather labelled "Weather context", never "Cause"; descriptive only.
+- [x] Validation codes: `session_has_no_aoi`, `historical_type_required`,
+      `historical_type_unsupported`, `invalid_vegetation_threshold`,
+      `invalid_water_threshold`.
+- [x] Provenance: `engine_version = "geoagent-historical-intelligence-v1"`,
+      `derived_on_demand`, `ordering_semantics`, `change_reuse`, `area_method`, `libraries`.
+
+### Service, schemas, API
+
+- [x] `backend/app/schemas/historical.py` (`HistoricalRequest`, `HistoricalResponse` and
+      block models, reusing the 6D index/mask/statistics/unavailable models).
+- [x] `backend/app/api/v1/endpoints/historical.py` — `POST /api/v1/historical/analyze`
+      (registered in `app/api/v1/router.py`); no GET endpoints (nothing persisted).
+- [x] `GEOAGENT_HISTORICAL_ENGINE_VERSION` in `app/core/config.py` + both `.env.example`
+      files (commented, optional — matches the documented-default pattern).
+- [x] **No database migration required** — derived on demand.
+
+### Tests
+
+- [x] `backend/tests/test_historical_unit.py` — ordering/dedup/ties, gap vs same-day, trend
+      basis, deterministic event labels (13 tests).
+- [x] `backend/tests/test_historical.py` — auth/access, no-AOI, type/threshold validation,
+      date-override rules, zero/one/many observations, oldest→newest ordering, gaps,
+      same-day not compared, missing-band unavailable nodes, completed events for both
+      types, weather contexts on/off, no `historical%` table, plus a cross-phase regression
+      (historical + change detection + agri + aqua + weather on one session) (21 tests).
+- [x] Full suite green: **291 passed**; `ruff check` / `ruff format --check` clean.
+
+### Frontend - Historical intelligence panel
+
+- [x] `frontend/src/lib/api/types.ts` — historical types; `frontend/src/lib/api/historical.ts`
+      — `analyzeHistorical`.
+- [x] `HistoricalIntelligencePanel.tsx` — coverage card, **observed-points-only** charts
+      (categorical axis so irregular sampling is never drawn as regular; segments only
+      between adjacent measured points), observation table (oldest → newest) with explicit
+      `unavailable (…)` labels, event cards with threshold/basis/comparison evidence,
+      trend cards, per-observation weather contexts.
+- [x] Mask selection reuses the existing `ChangeOverlay` / `ChangeMaskOverlay` map wiring
+      (no new map code); section gated on an active session.
+- [x] `npm run typecheck` → clean; `npm run lint` → 0 errors (only pre-existing warnings);
+      `npm run build` → green.
+
+### Documentation
+
+- [x] `docs/api-spec.md` §14 — historical endpoint, timeline/coverage/events/trends shape,
+  ordering rules, error/unavailable codes, derived-on-demand + no-migration note,
+  suite count 291.
+- [x] `docs/scientific-methodology.md` §3A — ordering semantics, per-observation reuse of
+  §2/§4 math, deterministic labels, coverage/gaps, descriptive-only trends, weather as
+  non-causal reference, explicit non-goals (no forecasting/attribution).
+- [x] `docs/project-management/roadmap.md` — 6E completed point.
 
 ## Acceptance / manual test procedure (6A)
 

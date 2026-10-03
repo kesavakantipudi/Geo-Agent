@@ -169,6 +169,14 @@ class Settings(BaseSettings):
     change_max_window_pixels: int = 20_000_000
     change_detection_engine_version: str = "geoagent-change-detection-v1"
 
+    # Historical intelligence (Phase 6E). A derived-on-demand timeline over the
+    # session's discovered scenes: each observation is analyzed with the shared
+    # index core (agri/aqua semantics per type), consecutive observations are
+    # compared with the change-detection engine, and weather is attached as
+    # descriptive context only. Nothing is persisted. The engine version is
+    # echoed in every response for provenance.
+    historical_engine_version: str = "geoagent-historical-intelligence-v1"
+
     @model_validator(mode="after")
     def _validate_secret_key(self) -> Settings:
         if self.app_env != "test" and (not self.auth_secret_key or len(self.auth_secret_key) < 32):

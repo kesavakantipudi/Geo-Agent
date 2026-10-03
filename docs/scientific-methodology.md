@@ -227,6 +227,98 @@ The top-level response is `completed` when at least one requested type completed
 per-type blocks carry their own `unavailable` and a partial invalid mask where
 meaningful.
 
+## 3A. Historical intelligence (timeline over a session's scenes, Phase 6E)
+
+A historical analysis is anchored to an analysis session (its AOI, access rules and
+base date range are authoritative) and covers **all** scenes the session discovered.
+Results are **derived on demand** — nothing is persisted and **no database migration
+is required**.
+
+### Ordering semantics
+
+- Observations are ordered by **`acquisition_date`, oldest → newest**, parsed from
+  each scene's STAC datetime. Ingestion/retrieval order is never used.
+- Scenes are deduplicated by scene id; acquisition-date ties are broken by scene id
+  for determinism only (not relied upon scientifically).
+- Only pairs with **strictly increasing** dates are compared. Observations sharing an
+  acquisition date stay on the timeline but are never compared
+  (`same_day_pairs_skipped`) — they cannot be temporally ordered.
+- An optional request-level date override must stay **inside** the session range.
+
+### Per-observation measurement
+
+Each observation is measured with the shared index core using the same definitions as
+Phase 6A (vegetation, NDVI) and Phase 6B (water, NDWI + water boundary), including
+the identical cloud-masking rule and validity statistics — the timeline introduces
+no new index math. Window/validity settings come from the agri/aqua settings; the
+water summary reuses `aqua.classification.water_summary`.
+
+An observation that cannot be measured (bands not retrieved, provider without a band
+map, insufficient valid pixels) is an explicit `status: "unavailable"` node carrying a
+structured reason. **Missing observations are never coerced to zero** and are never
+carried into a trend.
+
+### Consecutive-pair events
+
+Events are not a new estimator: each consecutive pair is handed to the Phase 6D
+change engine, so alignment, the "valid in both" comparison mask, inclusive NDVI/NDWI
+boundaries, class areas, masks and statistics are identical to §3. The historical
+layer only adds a deterministic **label** over the computed classes:
+
+- Vegetation — the class with the larger pixel count over comparison-valid pixels:
+  `vegetation_increase` if increased > decreased, `vegetation_decrease` if
+  decreased > increased, `vegetation_stable` on a tie.
+- Water — the net new-vs-lost water-pixel balance: `water_expansion` if new > lost,
+  `water_reduction` if lost > new, `water_stable` on a tie.
+
+These labels are descriptions of measured class areas, not assertions of cause.
+
+### Coverage and gaps
+
+`coverage` always states what the timeline actually rests on: observation count, first
+and last acquisition date, span, ordering, `compared_pairs`, `same_day_pairs_skipped`,
+`limited` (fewer than two observations, any gap, or any same-day pair) and human-readable
+`notes`. **Irregular temporal gaps are reported, never interpolated** — no observation
+is synthesized to fill a gap.
+
+### Trends are descriptive only
+
+Per type, a trend reports `first`/`latest`/`minimum`/`maximum` measured values,
+`absolute_change` (and `relative_change_pct` when the first value is non-zero), the
+`period`, the number of contributing `observations`, and a `basis` string capped to
+the evidence ("Single observation; no change computed.", "Observed change between two
+observations.", "Trend across N observations.", or the single-date variant when all
+observations share one acquisition date). **No extrapolation, no interpolation, and no
+seasonal modelling** is performed.
+
+### Weather is reference, not cause
+
+With `include_weather: true`, one descriptive weather context per observation (ordered
+oldest → newest) is attached via `weather_context_service.default_context`, using the
+configured default window and variables. Weather is labelled "Weather context"
+(never "Cause") and expresses correlation only.
+
+### Historical unavailable codes
+
+| Code | When |
+| --- | --- |
+| `no_historical_observations` | The session has no scenes within the effective date range (top level). |
+| `all_requested_analyses_unavailable` | Nothing completed across observations and events (top level). |
+| `provider_unsupported` | No band-role map for the scene's provider. |
+| `bands_not_retrieved` | Required bands not retrieved for that observation (or either scene of a pair). |
+| `insufficient_valid_pixels` | Valid fraction below the agri/aqua minimum. |
+
+400 validation codes: `session_has_no_aoi`, `historical_type_required`,
+`historical_type_unsupported`, `invalid_vegetation_threshold`, `invalid_water_threshold`,
+`invalid_date_range`, `date_range_outside_session`.
+
+### Explicit non-goals
+
+This feature is descriptive and analytical only. It performs **no forecasting**, no
+projective modelling of future indices or water extent, and **no causal attribution**
+between weather and imagery. Associations over time are presented as temporal
+coincidence of measured quantities.
+
 ## 4. Cloud/quality masking
 
 - SCL (Scene Classification Layer) values: `0` no-data, `1` saturated/defective,
@@ -309,6 +401,13 @@ returned (HTTP 200) but not stored.
   (`alignment.verify_alignment`/`resample_nearest`, `classification`,
   `encoding.encode_mask_png`); `provenance.engine_version =
   "geoagent-change-detection-v1"`, `derived_on_demand = true`.
+- Historical intelligence composes those same primitives rather than introducing new
+  ones: `backend/app/services/historical_service.py` orders observations, measures each
+  with the shared windowed index core (`analyze_index_ratio`) and the Aqua water
+  summary, and calls the Phase 6D `compute_change_index` per consecutive pair;
+  `provenance.engine_version = "geoagent-historical-intelligence-v1"`,
+  `derived_on_demand = true`, `ordering_semantics` and `change_reuse` record both
+  decisions explicitly.
 - `processing.libraries` records `rasterio`, `affine`, `numpy`, `shapely`,
   `pyproj` versions used for the computation.
 - `processing.window` records the `(col_off, row_off, width, height)` window in
@@ -343,3 +442,14 @@ returned (HTTP 200) but not stored.
   (auth/access, `same_scene`/`before_after_order`, per-type unavailable states,
   completed provenance + weather contexts, and the derived-on-demand contract —
   no `change%` table exists after analysis).
+- Historical-intelligence tests: `backend/tests/test_historical_unit.py` verifies the
+  pure timeline layer (acquisition-date ordering incl. dedup and tie-breaking, gap vs
+  same-day detection, trend-basis wording capped to the evidence, and the deterministic
+  vegetation/water event labels);
+  `backend/tests/test_historical.py` exercises the endpoint end to end (auth/access,
+  no-AOI session, type/threshold validation, date-override rules, zero/one/many
+  observations, oldest→newest ordering, irregular gaps, same-day pairs not compared,
+  per-observation unavailable nodes for missing bands, completed event labels for both
+  types, weather contexts included/omitted, and the derived-on-demand contract — no
+  `historical%` table exists after analysis), plus a cross-phase regression that runs
+  historical + change detection + agri + aqua + weather context over one session.
