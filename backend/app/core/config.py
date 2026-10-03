@@ -142,6 +142,19 @@ class Settings(BaseSettings):
     aqua_min_valid_fraction: float = 0.01
     aqua_max_window_pixels: int = 20_000_000
 
+    # Weather context (Phase 6C). The context layer aligns *already stored*
+    # weather observations (retrieved via Phase 5) with a satellite observation:
+    # the default window is the acquisition day plus ``weather_context_window_days``
+    # before and after (UTC day boundaries; 0 = same-day only). Per-request
+    # overrides are capped at ``weather_context_max_window_days``; ``weather_context_variables``
+    # is the comma-separated default variable set for an embedded context. Context is
+    # derived on demand from stored observations only — it never fetches providers.
+    weather_context_window_days: int = 1
+    weather_context_max_window_days: int = 31
+    weather_context_variables: str = (
+        "temperature_2m,temperature_2m_max,temperature_2m_min,relative_humidity_2m,precipitation"
+    )
+
     @model_validator(mode="after")
     def _validate_secret_key(self) -> Settings:
         if self.app_env != "test" and (not self.auth_secret_key or len(self.auth_secret_key) < 32):

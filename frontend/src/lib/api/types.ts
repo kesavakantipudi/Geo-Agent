@@ -229,6 +229,72 @@ export interface WeatherSearchResponse {
   truncated: boolean;
 }
 
+export interface WeatherContextVariable {
+  name: string;
+  aggregator: "mean" | "sum" | "min" | "max" | "none";
+  value: number | null;
+  units: string | null;
+  units_doc: string | null;
+  observation_count: number;
+  sample_count: number;
+  expected_count: number;
+  coverage_pct: number;
+  available: boolean;
+  note: string | null;
+}
+
+export interface WeatherContextPeriod {
+  start: string;
+  end: string;
+  days_before: number;
+  days_after: number;
+}
+
+export interface WeatherContextSceneRef {
+  id: number;
+  scene_id: string;
+  provider: SatelliteProviderCode;
+  acquisition_date: string;
+}
+
+export interface WeatherContextUnavailable {
+  code: string;
+  reason: string;
+  details: string[];
+}
+
+export interface WeatherContext {
+  status: "available" | "unavailable";
+  scene: WeatherContextSceneRef;
+  satellite_observation: string;
+  period: WeatherContextPeriod | null;
+  variables_requested: string[];
+  variables: WeatherContextVariable[];
+  observation_count: number;
+  completeness_pct: number;
+  partial: boolean;
+  providers: string[];
+  models: string[];
+  data_types: string[];
+  attribution: string | null;
+  warnings: string[];
+  unavailable: WeatherContextUnavailable | null;
+  note: string | null;
+}
+
+export interface WeatherContextRequest {
+  analysis_session_id: number;
+  scene_id: number;
+  days_before?: number | null;
+  days_after?: number | null;
+  variables?: string[] | null;
+  providers?: string[] | null;
+}
+
+export interface WeatherContextResponse {
+  context: WeatherContext;
+}
+
 export type AgriIndexName = "ndvi";
 
 export interface AgriIndexInfo {
@@ -313,6 +379,7 @@ export interface AgriAnalysisResult {
   warnings: string[];
   unavailable: AgriUnavailableInfo | null;
   created_at: string | null;
+  weather_context: WeatherContext | null;
 }
 
 export interface AgriAnalyzeRequest {
@@ -433,6 +500,7 @@ export interface AquaAnalysisResult {
   processing: Record<string, unknown> | null;
   warnings: string[];
   unavailable: AquaUnavailableInfo | null;
+  weather_context: WeatherContext | null;
 }
 
 export interface AquaAnalyzeRequest {

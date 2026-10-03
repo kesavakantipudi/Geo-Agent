@@ -1,8 +1,29 @@
 # GeoAgent — API Specification
 
-> **Status:** Phases 2–5, Phase 6A (Agri Agent), and Phase 6B (Aqua Agent) are implemented. Phase 6B adds `POST /aqua/analyze` — deterministic NDWI open-water detection over locally retrieved band assets, sharing the Phase 6A windowed index core (`app/services/geospatial`). Unlike Agri, Aqua results are **derived on demand and never persisted** (no `aqua_analyses` table, no GET endpoints); every call recomputes from the retrieved bands, so there is nothing to go stale. It honors the same explicit `unavailable` states (HTTP 200, never fabricated numbers) and provenance-rich metadata. The suite has 184 passing integration tests. Endpoints below not yet implemented remain planned; planned modules stay as recorded design intent.
+> **Status:** Phases 2–5, Phase 6A (Agri Agent), Phase 6B (Aqua Agent), and Phase 6C (Weather Context) are implemented. Phase 6B adds `POST /aqua/analyze` — deterministic NDWI open-water detection over locally retrieved band assets, sharing the Phase 6A windowed index core (`app/services/geospatial`). Unlike Agri, Aqua results are **derived on demand and never persisted** (no `aqua_analyses` table, no GET endpoints); every call recomputes from the retrieved bands, so there is nothing to go stale. It honors the same explicit `unavailable` states (HTTP 200, never fabricated numbers) and provenance-rich metadata. Phase 6C adds `POST /weather/context` (weather context around a satellite observation, aligned with the acquisition day ± a configured window, and aggregates **stored** Phase 5 observations without ever calling a provider). The suite has 216 passing integration tests. Endpoints below not yet implemented remain planned; planned modules stay as recorded design intent.
 
 Reference: [`PRD.md`](../PRD.md) §28.
+
+## 12. Phase 6C — implemented endpoint (weather context)
+
+Base path `/api/v1`, same cookie/bearer auth and error contract. Weather context aligns **already-stored** weather observations (persisted via the Phase 5 `/weather/search` endpoints) with a satellite observation, so the response is a compact, deterministic summary of the observed atmospheric conditions around the imagery — it **never calls a provider** on demand and never invents data. The session is the access boundary: only observations discovered for the given session are considered, and the scene must both be accessible to the caller **and** discovered by that session (`scene_not_associated` otherwise).
+
+| Method | Path | Summary |
+| --- | --- | --- |
+| `POST` | `/weather/context` | Body: `{analysis_session_id, scene_id, days_before?, days_after?, variables?, providers?}`. Returns `{context: WeatherContext}`. |
+
+Config-driven defaults: `days_before`/`days_after` default to `GEOAGENT_WEATHER_CONTEXT_WINDOW_DAYS` (default `1`, i.e. acquisition day ± 1 day on **inclusive UTC day boundaries**; `0,0` = same-day only) and per-request overrides are capped at `GEOAGENT_WEATHER_CONTEXT_MAX_WINDOW_DAYS` (`weather_context_window_out_of_range` beyond that). `variables` defaults to `GEOAGENT_WEATHER_CONTEXT_VARIABLES` (temperature mean/min/max, humidity, precipitation); the same validation as `/weather/search` applies (`weather_variable_unknown`, `weather_too_many_variables`, `weather_provider_not_enabled`).
+
+Weather context is derived on demand and **not persisted**, so it cannot go stale. The response:
+
+- `status`: `available` when at least one stored observation falls inside the window, `unavailable` otherwise.
+- `scene` (id, `scene_id`, provider, `acquisition_date`), `satellite_observation` (the acquisition date), and the **actual** `period` used (`start`, `end`, `days_before`, `days_after`) — always echoed so results are auditable.
+- `variables_requested` and `variables`: one entry per requested variable with `aggregator` (`mean`/`sum`/`min`/`max`/`none`), `value` (**`None` if missing — never fabricated as `0`**), `units`, `sample_count`/`expected_count`, `coverage_pct`, `available`, and a `note`. Rules: temperature-family means, `temperature_2m_max`/`min` extrema, `precipitation`/`rain`/`showers`/`snowfall`/`et0_...` **summed** over the window (a recorded `0.0` counts as a real measurement), and `weather_code`/`wind_direction_10m` are **not aggregated** (categorical/vector). Values are aggregated only when every stored row shares the same `units` (else `available=false` with a `units_mismatch` note).
+- Completeness accounting: `sample_count` = distinct stored timestamps for the variable in the window; `expected_count` = the largest count of distinct timestamps across the window (the shared time axis of a provider fetch — an explicit, self-consistent denominator, never an assumed "hourly" count); `coverage_pct = sample_count / expected_count × 100`. `observation_count`, `completeness_pct` (mean coverage), and `partial` flag incomplete-but-useful contexts; summed variables with partial coverage raise a `partial-window sum` warning.
+- `unavailable`: `{code: "no_weather_observations", reason, details[]}` (HTTP 200 — the request was valid; the data simply is not there).
+- Provenance: `providers`, `models`, `data_types`, `attribution`, `warnings`, and a `note` stating the context is descriptive and **not causal**.
+
+Phase 6C also embeds `weather_context` on agri/aqua intelligence results: `AgriAnalysisResult` and `AquaAnalysisResult` gain a `weather_context` field (defaults to the configured window/variables, recomputed on demand — in `POST /agri/analyze`, `GET /agri/analyses/{id}`, and `POST /aqua/analyze` — and attached to completed **and** unavailable results alike).
 
 ## 11. Phase 6B — implemented endpoints (water intelligence)
 

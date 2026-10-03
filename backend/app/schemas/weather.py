@@ -113,3 +113,78 @@ class WeatherSearchResponse(BaseModel):
     observations: list[WeatherPointSummary]
     providers: list[WeatherProviderStatus]
     truncated: bool = False
+
+
+class WeatherContextRequest(BaseModel):
+    """Align already-stored weather observations with a satellite observation.
+
+    ``days_before``/``days_after`` override the configured window (default
+    ``GEOAGENT_WEATHER_CONTEXT_WINDOW_DAYS``; capped at ``..._MAX_WINDOW_DAYS``).
+    ``variables`` overrides the default context variable set. ``providers`` is
+    an optional subset of the configured enabled providers. No provider calls
+    are made — this endpoint reads stored data only.
+    """
+
+    analysis_session_id: int
+    scene_id: int
+    days_before: int | None = None
+    days_after: int | None = None
+    variables: list[str] | None = None
+    providers: list[str] | None = None
+
+
+class WeatherContextVariable(BaseModel):
+    name: str
+    aggregator: str  # mean | sum | min | max | none
+    value: float | None = None  # None = missing, never fabricated as 0
+    units: str | None = None
+    units_doc: str | None = None
+    observation_count: int = 0
+    sample_count: int = 0
+    expected_count: int = 0
+    coverage_pct: float = 0.0
+    available: bool = False
+    note: str | None = None
+
+
+class WeatherContextPeriod(BaseModel):
+    start: date
+    end: date
+    days_before: int
+    days_after: int
+
+
+class WeatherContextScene(BaseModel):
+    id: int
+    scene_id: str
+    provider: str
+    acquisition_date: date
+
+
+class WeatherContextUnavailable(BaseModel):
+    code: str
+    reason: str
+    details: list[str] = []
+
+
+class WeatherContext(BaseModel):
+    status: Literal["available", "unavailable"]
+    scene: WeatherContextScene
+    satellite_observation: date
+    period: WeatherContextPeriod | None = None
+    variables_requested: list[str] = []
+    variables: list[WeatherContextVariable] = []
+    observation_count: int = 0
+    completeness_pct: float = 0.0
+    partial: bool = False
+    providers: list[str] = []
+    models: list[str] = []
+    data_types: list[str] = []
+    attribution: str | None = None
+    warnings: list[str] = []
+    unavailable: WeatherContextUnavailable | None = None
+    note: str | None = None  # "Weather context around this observation; no causal claim"
+
+
+class WeatherContextResponse(BaseModel):
+    context: WeatherContext

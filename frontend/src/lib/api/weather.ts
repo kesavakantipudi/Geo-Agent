@@ -1,4 +1,7 @@
 import type {
+  WeatherContext,
+  WeatherContextRequest,
+  WeatherContextResponse,
   WeatherObservationPoint,
   WeatherSearchRequest,
   WeatherSearchResponse,
@@ -13,6 +16,20 @@ export function searchWeather(
     analysis_session_id: sessionId,
     ...payload,
   });
+}
+
+export function getWeatherContext(
+  sessionId: number,
+  sceneId: number,
+  payload?: Partial<Omit<WeatherContextRequest, "analysis_session_id" | "scene_id">>,
+): Promise<WeatherContext> {
+  return api
+    .post<WeatherContextResponse>("/weather/context", {
+      analysis_session_id: sessionId,
+      scene_id: sceneId,
+      ...payload,
+    })
+    .then((response) => response.context);
 }
 
 export function listSessionObservations(

@@ -16,6 +16,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.weather import WeatherContext
+
 SUPPORTED_INDICES: tuple[str, ...] = ("ndwi",)
 
 
@@ -136,6 +138,9 @@ class AquaAnalysisResult(BaseModel):
     processing: AquaProcessingInfo | None = None
     warnings: list[str] = []
     unavailable: AquaUnavailableInfo | None = None
+    # Weather context around the satellite observation (Phase 6C), derived on
+    # demand from stored observations; descriptive only, never causal.
+    weather_context: WeatherContext | None = None
 
 
 class AquaAnalyzeResponse(BaseModel):

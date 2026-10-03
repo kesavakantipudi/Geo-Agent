@@ -71,6 +71,72 @@ Reference: [`PRD.md`](../PRD.md) §28; [`api-spec.md`](api-spec.md) §10.
 - **No persistence:** results are derived on demand from the retrieved bands and
   are never stored, so there is no stale-watermark risk.
 
+## 2. Weather context (satellite–weather alignment, Phase 6C)
+
+Weather context summarizes the observed atmospheric conditions **around** a
+satellite observation from weather data that GeoAgent already retrieved and
+stored in Phase 5. It is a *context*, not a model: it answers "what did the
+weather actually do around this scene?", and it never claims that weather
+*caused* an index value. Every response states this explicitly
+(`note: "…does not attribute cause to the imagery."`).
+
+- **Reads stored data only.** Context is derived on demand from
+  `weather_observations` already persisted via `POST /weather/search` and linked
+  to the analysis session through `WeatherObservationDiscovery`. Providers are
+  **never called** during context derivation, so there is no user-facing latency
+  from a live fetch and no new data can be invented at context time. Because
+  context is recomputed on every request, it can never go stale.
+- **Temporal alignment.** A scene acquired on date `D` draws an inclusive window
+  `[D − days_before, D + days_after]` over **whole UTC days**: from `00:00:00`
+  of the first day to `23:59:59.999` of the last day, compared in UTC. This makes
+  the window independent of the timezone each observation happened to be recorded
+  in (a row at local midnight on D±1 is always assigned to the correct day). The
+  default is `days_before = days_after = GEOAGENT_WEATHER_CONTEXT_WINDOW_DAYS`
+  (default `1`); `0,0` means *same-day only*. The window actually used is echoed
+  in the response (`period`). Window sizes are per-request overridable (capped at
+  `GEOAGENT_WEATHER_CONTEXT_MAX_WINDOW_DAYS`).
+- **Aggregation rules** (deterministic; see `backend/app/services/weather/context.py`):
+  - `temperature_2m`, `apparent_temperature`, `dewpoint_2m`, `relative_humidity_2m`,
+    `cloud_cover`, `pressure_msl`, `surface_pressure`, `soil_*`, `wind_speed_10m` →
+    **mean** over the window.
+  - `temperature_2m_max` → **max**; `temperature_2m_min` → **min**;
+    `wind_gusts_10m` → max.
+  - `precipitation`, `rain`, `showers`, `snowfall`, `et0_fao_evapotranspiration` →
+    **sum** over the window. A stored `0.0` is a genuine provider measurement
+    ("no measurable precipitation in that interval") and is summed like any value;
+    an interval with no record contributes nothing. Partial-window sums are
+    explicitly flagged ("sum over N of M recorded samples").
+  - `weather_code` and `wind_direction_10m` are **not aggregated** (categorical /
+    circular-vector quantities; a "mean vector" or "average weather-code" would be
+    meaningless).
+  - **Units guard:** a variable is aggregated only when every stored row for it in
+    the window shares the same `units`; a mixed-units case is reported
+    `available=false` with an explicit `units_mismatch` note rather than a
+    silently wrong number.
+- **Missing data contract.** A variable with no rows in the window, or whose value
+  is absent, keeps `value = None` — **never `0`**. Zero is only ever a real stored
+  measurement. This mirrors the Phase 5 fetch contract (missing stays missing).
+- **Completeness accounting.** For provider fetches, every variable shares one
+  time axis, so the context uses an explicit, self-consistent denominator:
+  - `sample_count` = number of distinct stored timestamps for the variable in the
+    window;
+  - `expected_count` = the largest number of distinct timestamps seen for *any*
+    context row in the window — the shape a "complete" set for that provider would
+    have, without us assuming any particular temporal resolution;
+  - `coverage_pct = sample_count / expected_count × 100`; overall
+    `completeness_pct` = mean coverage across requested variables;
+  - `partial = true` when coverage < 100 % or any requested variable is
+    unconvertible — shown in the UI as "Weather coverage is incomplete for the
+    selected period."
+  - Zero observations in the window → status `unavailable`, code
+    `no_weather_observations`, and an explicit reason (not empty numbers).
+- **Honesty on intelligence results.** Agri and Aqua responses attach
+  `weather_context` (default window/variables) even to `unavailable` analyses.
+  The companion text always describes the *corresponding period* and reports
+  precipitation/humidity/temperature as observations; it never states or implies
+  e.g. "NDVI dropped because rainfall decreased" — correlation of timing is
+  recorded, causation is not inferred.
+
 ## 3. Cloud/quality masking
 
 - SCL (Scene Classification Layer) values: `0` no-data, `1` saturated/defective,
@@ -165,3 +231,12 @@ returned (HTTP 200) but not stored.
   Agri results only, and 422 validation codes — `backend/tests/test_agri.py`,
   `backend/tests/test_aqua.py`. The Aqua suite additionally asserts that the
   endpoint creates **no** `aqua_%` table (derived-on-demand contract).
+- Weather-context tests: `backend/tests/test_weather_context_unit.py` verifies the
+  pure layer (UTC alignment windows incl. month boundaries and same-day windows,
+  mean/sum/min/max/no-aggregation, the units-mismatch guard, missing-stays-`None`,
+  precipitation sums including recorded zeros, and coverage scaling);
+  `backend/tests/test_weather_context.py` exercises the endpoint end to end
+  (auth 401, unknown session/scene 404, `scene_not_associated`, window echo,
+  variable/provider validation, the explicit `no_weather_observations` state,
+  precipitation aggregation through the real Phase 5 storage path, and the
+  embedded `weather_context` on completed/unavailable Agri and Aqua results).

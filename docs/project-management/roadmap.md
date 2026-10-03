@@ -1,6 +1,6 @@
 # GeoAgent — Roadmap (Q1–Q4)
 
-> **Status: IN PROGRESS — Phases 1–5 implemented; Phase 6 (Geospatial Intelligence) under way; Phase 6A (Agri) and Phase 6B (Aqua) implemented.** This roadmap is subject to refinement based on implementation progress. Quarter boundaries are indicative; a 4-member team should re-plan after each quarter review. Target completion: **January 2027**.
+> **Status: IN PROGRESS — Phases 1–5 implemented; Phase 6 (Geospatial Intelligence) under way; Phase 6A (Agri), Phase 6B (Aqua), and Phase 6C (Weather context) implemented.** This roadmap is subject to refinement based on implementation progress. Quarter boundaries are indicative; a 4-member team should re-plan after each quarter review. Target completion: **January 2027**.
 
 ## Q1 — Foundation
 
@@ -16,7 +16,7 @@
 
 | Phase | Deliverable focus |
 | --- | --- |
-| **Phase 6 — Agri & Aqua Agents** | Vegetation/agriculture analysis (NDVI, crop health, stress, historical comparison) and water-body detection/water-spread estimation. *(Phase 6A — Agri Agent and Phase 6B — Aqua Agent implemented — see [phase6-checklist](phase6-checklist.md); 6C–6E pending.)* |
+| **Phase 6 — Agri, Aqua & Weather-Context Agents** | Vegetation/agriculture analysis (NDVI, crop health, stress, historical comparison), water-body detection/water-spread estimation, and weather context around satellite observations. *(Phase 6A — Agri Agent, Phase 6B — Aqua Agent, and Phase 6C — Weather context implemented — see [phase6-checklist](phase6-checklist.md); 6D–6E pending.)* |
 | **Phase 7 — Aqua Agent** | Water-body detection, spread estimation, historical water analysis. |
 | **Phase 8 — Weather Agent** | Weather/environmental intelligence and correlation support. |
 | **Phase 9 — Change Detection Engine** | Temporal comparison, ML/CV change detection, localization, significance thresholds. |

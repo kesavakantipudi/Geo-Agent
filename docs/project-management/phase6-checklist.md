@@ -180,10 +180,87 @@ provenance-rich results, and full verification before commit/push.
 - [x] `docs/project-management/roadmap.md` — 6B completed point.
 - [x] `.env.example` + `backend/.env.example` — `GEOAGENT_AQUA_*` vars documented.
 
-## Phase 6C — Weather integration (planned)
+## Phase 6C — Weather integration: weather context (complete)
 
-- [ ] Correlate agri/aqua outputs with stored weather observations (Phase 5) for an AOI in
-      `correlation` terms only (never causation claims).
+Correlate agri/aqua outputs with stored weather observations (Phase 5) for an AOI in
+`correlation` terms only (never causation claims) — implemented as a deterministic
+**weather-context** layer that aligns stored observations with a satellite observation.
+
+### Context layer (`app/services/weather/context.py` — pure, deterministic)
+
+- [x] `AGGREGATORS` map (mean for temperature/humidity-family, `max`=`temperature_2m_max`,
+  `min`=`temperature_2m_min`, **sum** for `precipitation`/`rain`/`showers`/`snowfall`/`et0_...`,
+  `none` for `weather_code`/`wind_direction_10m`.
+- [x] `alignment_window`/`window_dates` — inclusive **UTC-day** window `[D − days_before, D + days_after]`
+  (timezone-independent; `0,0` = same-day only); `expected_timestamp_count`,
+  `aggregate_observations` (units-mismatch guard, missing stays `None` never `0`, partial-window
+  sum warning), completeness `coverage_pct = sample_count / expected_count × 100`.
+
+### Service + API
+
+- [x] `app/services/weather_context_service.py`: `build_context` (session = access boundary,
+  scene access via `get_scene_orm`, optional `require_associated` → `scene_not_associated`),
+  `default_context` (embedded default window/variables), window/variable/provider validation
+  reusing Phase 5 rules (`weather_context_window_out_of_range`, `weather_variable_unknown`,
+  `weather_provider_not_enabled`).
+- [x] Schemas `app/schemas/weather.py`: `WeatherContextRequest`, rich `WeatherContext`
+  (status available/unavailable, scene, `satellite_observation`, echoed `period`,
+  per-variable aggregation `WeatherContextVariable`, completeness, provenance, attribution,
+  `partial`, `unavailable` `{code,reason,details}`, descriptive-not-causal `note`),
+  `WeatherContextResponse`.
+- [x] Endpoint `POST /weather/context` in `app/api/v1/endpoints/weather.py` — reads **stored**
+  observations only, never calls a provider.
+- [x] Settings `GEOAGENT_WEATHER_CONTEXT_WINDOW_DAYS` (1), `..._MAX_WINDOW_DAYS` (31),
+  `..._VARIABLES` (5-variable default) in `app/core/config.py` + both `.env.example`s.
+- [x] Integration: `weather_context` field on `AgriAnalysisResult` and `AquaAnalysisResult`;
+  recomputed on demand in `agri_service.analyze`/`get_analysis` and `aqua_service.analyze`
+  (never persisted — can't go stale; attached to completed **and** unavailable results).
+
+### Tests
+
+- [x] `tests/test_weather_context_unit.py` — **16 passing**: UTC alignment (default/same-day/
+  month-boundary), timezone determinism, mean/min/max/sum, precipitation incl. recorded `0.0`,
+  non-aggregatable variables, units mismatch, missing-stays-`None`, non-finite filtering,
+  partial-window sum warning, expected-count/coverage scaling.
+- [x] `tests/test_weather_context.py` — **16 passing**: auth 401, unknown session/scene 404,
+  cross-user access 404, `scene_not_associated` 400, happy-path aggregation through the real
+  Phase 5 storage path (mean/coverage/partial, window echo, attribution), same-day window,
+  window-out-of-range, unknown variable/provider, explicit `no_weather_observations`,
+  observations-outside-window, precipitation sum, and embedded context on completed/unavailable
+  Agri + Aqua results.
+- [x] Full suite `python -m pytest -q` (env `GEOAGENT_TEST_PG_HOST=127.0.0.1`
+  `GEOAGENT_TEST_PG_PORT=55432`) → **216 passed** (184 pre-6C + 32 weather-context);
+  `python -m ruff check .` and `python -m ruff format --check` → clean.
+
+### Frontend — weather context
+
+- [x] `src/lib/api/types.ts`: `WeatherContext`, `WeatherContextVariable`, `WeatherContextPeriod`,
+  `WeatherContextSceneRef`, `WeatherContextUnavailable`, `WeatherContextRequest/Response`;
+  `weather_context` field added to `AgriAnalysisResult` and `AquaAnalysisResult`.
+- [x] `src/lib/api/weather.ts`: `getWeatherContext(sessionId, sceneId, payload?)`.
+- [x] `src/components/analysis/WeatherContextCard.tsx`: reusable card — period echo,
+  variable grid (label/value/units, "Unavailable" for missing never `0`, sample counts on
+  partial coverage), incomplete-coverage note, warnings, attribution, explicit
+  "No weather observations available for this period.", descriptive-not-causal note.
+- [x] `AgriPanel.tsx` + `AquaPanel.tsx`: WeatherContextCard rendered for both **completed and
+  unavailable** results.
+- [x] `npm run typecheck` → clean; `npm run lint` → 0 errors (only pre-existing Phase 4
+  warnings); `npm run build` → green; `frontend/src/lib` tracking unaffected.
+
+### Documentation
+
+- [x] `docs/api-spec.md` §12 — weather-context endpoint, aggregation/completeness rules,
+  `no_weather_observations`, embedded field on agri/aqua, suite count 216.
+- [x] `docs/scientific-methodology.md` — temporal alignment, aggregation rules, missing-data
+  contract, completeness accounting, honesty note (context, not causation).
+- [x] `docs/project-management/roadmap.md` — 6C completed point.
+- [x] `.env.example` + `backend/.env.example` — `GEOAGENT_WEATHER_CONTEXT_*` vars documented.
+
+### Known notes / remaining team actions (6C)
+
+- [ ] 6C correlation is implemented as *descriptive context* only; explicit correlation
+      statistics and thresholded "correlated change" assertions are intentionally deferred to
+      6D/6E, where the Change Agent can compare periods.
 
 ## Phase 6D — Change Detection (planned)
 
@@ -219,5 +296,6 @@ provenance-rich results, and full verification before commit/push.
 ## When this is done
 
 6A was committed (`feat(agri): add agricultural geospatial intelligence`) and pushed to
-`origin/main`. **6B is committed as `feat(aqua): add water intelligence`** and pushed; after
-verifying a clean tree, proceed to **Phase 6C — Weather integration**.
+`origin/main`. **6B is committed as `feat(aqua): add water intelligence`** and pushed. **6C is
+committed as `feat(weather): integrate weather context with geospatial intelligence`** and
+pushed; after verifying a clean tree, proceed to **Phase 6D — Change Detection**.

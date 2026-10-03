@@ -13,6 +13,7 @@ import type {
   RetrievalRecord,
   SatelliteScene,
 } from "@/lib/api/types";
+import { WeatherContextCard } from "./WeatherContextCard";
 
 const NDWI_INDEX = {
   name: "ndwi",
@@ -232,8 +233,15 @@ export function AquaPanel({ sessionId, aoi }: AquaPanelProps) {
         </div>
       )}
 
+      {result && result.status === "unavailable" && (
+        <WeatherContextCard context={result.weather_context} />
+      )}
+
       {result?.status === "completed" && result.statistics && result.classification && (
-        <AnalysisResultCard result={result} />
+        <>
+          <AnalysisResultCard result={result} />
+          <WeatherContextCard context={result.weather_context} />
+        </>
       )}
     </div>
   );

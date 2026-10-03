@@ -17,7 +17,7 @@ from app.core.exceptions import unavailable
 from app.db.session import get_db
 from app.models import User
 from app.schemas import weather as weather_schemas
-from app.services import weather_service
+from app.services import weather_context_service, weather_service
 from app.services.weather import WeatherError
 
 router = APIRouter(prefix="/weather", tags=["weather"])
@@ -37,6 +37,27 @@ def search_weather_endpoint(
         return weather_service.fetch_weather_endpoint(db, user.id, payload)
     except WeatherError as exc:
         raise unavailable(str(exc)) from exc
+
+
+@router.post(
+    "/context",
+    response_model=weather_schemas.WeatherContextResponse,
+    summary="Weather context aligning stored observations with a satellite observation",
+    description=(
+        "Derives a deterministic weather context for a satellite observation from "
+        "observations already retrieved (never fetched on demand) and discovered for "
+        "the given analysis session. Defaults to the acquisition day plus/minus the "
+        "configured window (GEOAGENT_WEATHER_CONTEXT_WINDOW_DAYS). Descriptive only; "
+        "no causal claim is made."
+    ),
+)
+def weather_context_endpoint(
+    payload: weather_schemas.WeatherContextRequest,
+    user: Annotated[User, Depends(get_current_user)] = None,
+    db: Annotated[Session, Depends(get_db)] = None,
+):
+    ctx = weather_context_service.build_context(db, user.id, payload, require_associated=True)
+    return {"context": ctx}
 
 
 @router.get(

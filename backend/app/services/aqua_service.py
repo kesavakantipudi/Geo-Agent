@@ -18,7 +18,11 @@ from app.core.config import get_settings
 from app.core.exceptions import bad_request
 from app.models import SatelliteScene
 from app.schemas import aqua as aqua_schemas
-from app.services import analysis_session_service, satellite_scene_service
+from app.services import (
+    analysis_session_service,
+    satellite_scene_service,
+    weather_context_service,
+)
 from app.services.aqua import AquaUnavailable, compute_aqua_index
 from app.services.geometry import validate_geometry
 from app.services.geospatial.bands import resolve_band_keys
@@ -84,37 +88,38 @@ def analyze(
         )
 
     results: list[dict[str, Any]] = []
+    weather = weather_context_service.default_context(db, actor_id, session["id"], scene.id)
     for index_name in dict.fromkeys(data.indices):
         index = WATER_INDEX_REGISTRY[index_name]
         role_keys = resolve_band_keys(scene.provider, index_name)
         if role_keys is None:
-            results.append(
-                _unavailable_result(
-                    scene,
-                    AquaUnavailable(
-                        "provider_unsupported",
-                        f"No band mapping is registered for provider '{scene.provider}'.",
-                        details=[f"index={index_name}"],
-                    ),
-                )
+            result = _unavailable_result(
+                scene,
+                AquaUnavailable(
+                    "provider_unsupported",
+                    f"No band mapping is registered for provider '{scene.provider}'.",
+                    details=[f"index={index_name}"],
+                ),
             )
+            result["weather_context"] = weather
+            results.append(result)
             continue
         required = {"green", "nir"}
         retrieval_paths, retrieval_ids, missing = satellite_scene_service.completed_retrieval_paths(
             db, scene.id, [role_keys[role] for role in required]
         )
         if missing:
-            results.append(
-                _unavailable_result(
-                    scene,
-                    AquaUnavailable(
-                        "bands_not_retrieved",
-                        "The band assets required for this analysis have not been "
-                        "downloaded for this scene.",
-                        details=[f"missing_assets={','.join(sorted(missing))}"],
-                    ),
-                )
+            result = _unavailable_result(
+                scene,
+                AquaUnavailable(
+                    "bands_not_retrieved",
+                    "The band assets required for this analysis have not been "
+                    "downloaded for this scene.",
+                    details=[f"missing_assets={','.join(sorted(missing))}"],
+                ),
             )
+            result["weather_context"] = weather
+            results.append(result)
             continue
 
         band_paths = {role: retrieval_paths[role_keys[role]] for role in required}
@@ -144,11 +149,14 @@ def analyze(
                 settings=settings,
             )
         except AquaUnavailable as exc:
-            results.append(_unavailable_result(scene, exc))
+            result = _unavailable_result(scene, exc)
+            result["weather_context"] = weather
+            results.append(result)
             continue
 
         payload["scene"] = _scene_reference(scene)
         payload["acquisition_date"] = scene.acquisition_date
+        payload["weather_context"] = weather
         results.append(payload)
 
     db.commit()

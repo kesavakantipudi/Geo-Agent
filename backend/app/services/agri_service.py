@@ -19,7 +19,7 @@ from app.core.config import get_settings
 from app.core.exceptions import bad_request, not_found
 from app.models import AgriAnalysis, SatelliteScene
 from app.schemas import agri as agri_schemas
-from app.services import analysis_session_service, satellite_scene_service
+from app.services import analysis_session_service, satellite_scene_service, weather_context_service
 from app.services.agri import AgriUnavailable, bands, compute_agri_index
 from app.services.agri.classification import HEURISTIC_NOTE
 from app.services.agri.indices import INDEX_REGISTRY
@@ -63,37 +63,38 @@ def analyze(
         )
 
     results: list[dict[str, Any]] = []
+    weather = weather_context_service.default_context(db, actor_id, session["id"], scene.id)
     for index_name in dict.fromkeys(data.indices):
         index = INDEX_REGISTRY[index_name]
         role_keys = bands.resolve_band_keys(scene.provider, index_name)
         if role_keys is None:
-            results.append(
-                _unavailable_result(
-                    scene,
-                    AgriUnavailable(
-                        "provider_unsupported",
-                        f"No band mapping is registered for provider '{scene.provider}'.",
-                        details=[f"index={index_name}"],
-                    ),
-                )
+            result = _unavailable_result(
+                scene,
+                AgriUnavailable(
+                    "provider_unsupported",
+                    f"No band mapping is registered for provider '{scene.provider}'.",
+                    details=[f"index={index_name}"],
+                ),
             )
+            result["weather_context"] = weather
+            results.append(result)
             continue
         required = {"red", "nir"}
         retrieval_paths, retrieval_ids, missing = satellite_scene_service.completed_retrieval_paths(
             db, scene.id, [role_keys[role] for role in required]
         )
         if missing:
-            results.append(
-                _unavailable_result(
-                    scene,
-                    AgriUnavailable(
-                        "bands_not_retrieved",
-                        "The band assets required for this analysis have not been "
-                        "downloaded for this scene.",
-                        details=[f"missing_assets={','.join(sorted(missing))}"],
-                    ),
-                )
+            result = _unavailable_result(
+                scene,
+                AgriUnavailable(
+                    "bands_not_retrieved",
+                    "The band assets required for this analysis have not been "
+                    "downloaded for this scene.",
+                    details=[f"missing_assets={','.join(sorted(missing))}"],
+                ),
             )
+            result["weather_context"] = weather
+            results.append(result)
             continue
 
         band_paths = {role: retrieval_paths[role_keys[role]] for role in required}
@@ -125,7 +126,9 @@ def analyze(
                 settings=settings,
             )
         except AgriUnavailable as exc:
-            results.append(_unavailable_result(scene, exc))
+            result = _unavailable_result(scene, exc)
+            result["weather_context"] = weather
+            results.append(result)
             continue
         row = _persist_result(
             db,
@@ -140,6 +143,7 @@ def analyze(
         payload["created_at"] = row.created_at
         payload["scene"] = _scene_reference(scene)
         payload["acquisition_date"] = scene.acquisition_date
+        payload["weather_context"] = weather
         results.append(payload)
 
     db.commit()
@@ -153,7 +157,12 @@ def get_analysis(db: Session, actor_id: int, analysis_id: int) -> dict[str, Any]
         raise not_found("Agricultural analysis not found.", code="agri_analysis_not_found")
     analysis_session_service.get(db, actor_id, row.analysis_session_id)
     scene = db.get(SatelliteScene, row.scene_id)
-    return _result_from_row(row, _scene_reference(scene) if scene else None)
+    result = _result_from_row(row, _scene_reference(scene) if scene else None)
+    if scene is not None:
+        result["weather_context"] = weather_context_service.default_context(
+            db, actor_id, row.analysis_session_id, scene.id
+        )
+    return result
 
 
 def list_analyses_for_session(

@@ -15,6 +15,7 @@ import type {
   RetrievalRecord,
   SatelliteScene,
 } from "@/lib/api/types";
+import { WeatherContextCard } from "./WeatherContextCard";
 
 const NDVI_INDEX = { name: "ndvi", label: "NDVI — Normalized Difference Vegetation Index" };
 const REQUIRED_BANDS = ["B04", "B08", "SCL"];
@@ -241,8 +242,15 @@ export function AgriPanel({ sessionId, aoi }: AgriPanelProps) {
         </div>
       )}
 
+      {result && result.status === "unavailable" && (
+        <WeatherContextCard context={result.weather_context} />
+      )}
+
       {result?.status === "completed" && result.statistics && result.classification && (
-        <AnalysisResultCard result={result} />
+        <>
+          <AnalysisResultCard result={result} />
+          <WeatherContextCard context={result.weather_context} />
+        </>
       )}
 
       {summaries && summaries.length > 0 && (

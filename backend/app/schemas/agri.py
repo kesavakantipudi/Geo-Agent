@@ -16,6 +16,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.weather import WeatherContext
+
 SUPPORTED_INDICES: tuple[str, ...] = ("ndvi",)
 
 
@@ -128,6 +130,9 @@ class AgriAnalysisResult(BaseModel):
     warnings: list[str] = []
     unavailable: AgriUnavailableInfo | None = None
     created_at: datetime | None = None
+    # Weather context around the satellite observation (Phase 6C), derived on
+    # demand from stored observations; descriptive only, never causal.
+    weather_context: WeatherContext | None = None
 
 
 class AgriAnalyzeResponse(BaseModel):
