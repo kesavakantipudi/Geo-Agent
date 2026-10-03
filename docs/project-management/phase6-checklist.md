@@ -262,10 +262,119 @@ Correlate agri/aqua outputs with stored weather observations (Phase 5) for an AO
       statistics and thresholded "correlated change" assertions are intentionally deferred to
       6D/6E, where the Change Agent can compare periods.
 
-## Phase 6D — Change Detection (planned)
+## Phase 6D — Change Detection (complete)
 
-- [ ] Multi-date index differencing (NDVI/NDWI) over two scenes; significance thresholds
-      configurable and documented; ML/CV where feasible.
+Multi-date NDVI/NDWI differencing over **two** satellite scenes anchored to an analysis
+session (its AOI and access rules). Results are **derived on demand** — nothing is
+persisted. Each requested type is reported as a `completed` block with per-pixel class
+masks and area statistics, or an explicit `unavailable` block with a structured reason —
+never fabricated numbers. Change is defined only over pixels valid in both observations.
+
+### Alignment core (`app/services/change_detection/`) — pure, deterministic
+
+- [x] `alignment.py`: `to_transform`, `verify_alignment` (CRS equality, north-up, resolution
+  tolerance 1e-3; mismatches → `incompatible_raster_alignment`), `resample_nearest` (after →
+  before window grid, nearest-neighbour on a reprojected grid — labels only, never
+  reflectance), `window_bounds_ll`, `extract_grid`; identical grids → `mode == "none"`,
+  otherwise `mode == "nearest"` with `resampled_with` recorded.
+- [x] `classification.py`: vegetation `delta = NDVI_after − NDVI_before` with inclusive
+  boundary (`>= +threshold` increase, `<= −threshold` decrease, default
+  `change_vegetation_threshold = 0.10`, validated `(0, 2]`); water per-date
+  `NDWI >= threshold` (`aqua_water_threshold` default 0.0, validated `[−1, 1]`,
+  `boundary = "water = NDWI >= threshold (inclusive)"`); mask codes 0/1/2/3 per class,
+  255 = invalid; `vegetation_summary`/`water_summary`/`class_summary`/`water_change`/
+  `vegetation_change`; `vegetation_limitations_note` ("documented threshold, not a
+  validated change assertion").
+- [x] `encoding.py`: `encode_mask_png` → rasterio `MemoryFile` PNG (uint8, nodata 255) →
+  base64 **data URI** (no Pillow dependency).
+- [x] `__init__.py`: `ChangeDetectionError`, `ChangeDetectionUnavailable`,
+  `compute_change_detection`/`compute_change_for_type`, `unavailable_block`, `_compare_payloads`
+  — stats + percentages always over the comparison (both-valid) mask.
+
+### Service, schemas, API
+
+- [x] `app/services/change_detection_service.py`: session access boundary, scene
+  ownership/association (`scene_not_associated`), ordering rule **before.acquisition_date
+  strictly < after.acquisition_date** (same-day → 400), optional per-call AOI override,
+  band-role resolution, per-type computation, two descriptive weather contexts
+  (`weather_context_service.default_context`, `include_weather` opt-out) and provenance.
+- [x] Schemas `app/schemas/change_detection.py`: request
+  (`analysis_session_id`, `before_scene_id`, `after_scene_id`, `types`, `mask_clouds`,
+  `vegetation_threshold`, `water_threshold`, `include_weather`), `ChangeSceneRef` (metadata
+  incl. constellation), `ChangeIndexInfo`, `ChangeBandOutput`, `ChangeCloudInfo`,
+  `ChangeGrid`, `ChangeAlignment`, `ChangeMasking`, `ChangeStatBlock`/`ChangeStatistics`
+  (delta `None` for water — transitions, not a signed delta), `ChangeClassification`
+  (with `water_extent` for water), `ChangeMask`, `ChangeUnavailableInfo`, `ChangeTypeBlock`,
+  `ChangeProvenance`, `ChangeDetectionResponse`.
+- [x] Endpoint `POST /change-detection/analyze` in `app/api/v1/endpoints/change_detection.py`;
+  registered in v1 router.
+- [x] 400 error codes: `same_scene`, `before_after_order`, `scene_not_associated`,
+  `session_has_no_aoi`, `change_type_required`, `change_type_unsupported`,
+  `invalid_vegetation_threshold`, `invalid_water_threshold`. Per-type unavailable codes:
+  `bands_not_retrieved`, `insufficient_valid_pixels`, `incompatible_raster_alignment`,
+  `no_valid_comparison_pixels`, `provider_unsupported`; top-level
+  `all_requested_analyses_unavailable` when nothing completed.
+- [x] Settings `GEOAGENT_CHANGE_VEGETATION_THRESHOLD` (0.10),
+  `GEOAGENT_CHANGE_MIN_VALID_FRACTION` (0.01), `GEOAGENT_CHANGE_MAX_WINDOW_PIXELS`
+  (20 000 000), `GEOAGENT_CHANGE_DETECTION_ENGINE_VERSION` (`geoagent-change-detection-v1`)
+  in `app/core/config.py` + both `.env.example`s.
+
+### Core integration
+
+- [x] `app/services/geospatial/analysis.py`: `processing` now carries an additive `"grid"`
+  (`crs`, `transform`, `width`, `height`, `pixel_size_m`) — backwards-safe; Pydantic drops
+  it for agri/aqua response models; all pre-existing agri/aqua/weather tests unchanged green.
+
+### Tests
+
+- [x] `tests/test_change_detection_unit.py` — **20 passing**: inclusive vegetation boundary,
+  bad thresholds, water transitions, invalid-never-changes, overrides, alignment identity /
+  offset / CRS-mismatch / resolution-mismatch / window bounds, PNG encoding, and full
+  pipeline cases for both types (decrease+stable, increase, lost/new water, no-comparison
+  pixels, incompatible alignment, insufficient valid pixels, nearest resample).
+- [x] `tests/test_change_detection.py` — **21 passing** (needs PG test DB at
+  `127.0.0.1:55432`): auth, unknown session/scene, cross-user access, `scene_not_associated`,
+  `same_scene`, same-day & reversed order, empty/unsupported types, invalid thresholds,
+  `bands_not_retrieved` unavailable, partial-unavailable keeps top-level completed, completed
+  vegetation + provenance + weather contexts, `include_weather:false`, water both-types,
+  `mask_clouds:false`, missing-SCL warning fallback, and derived-on-demand contract (no
+  `change%` table after analysis).
+- [x] Full suite `python -m pytest -q` (env `GEOAGENT_TEST_PG_HOST=127.0.0.1`
+  `GEOAGENT_TEST_PG_PORT=55432`) → **257 passed** (216 pre-6D + 41 change-detection);
+  `python -m ruff check .` and `python -m ruff format --check` → clean.
+
+### Frontend — Change detection panel
+
+- [x] `src/lib/api/types.ts`: `ChangeType/ChangeStatus`, `ChangeSceneReference`,
+  `ChangeIndexInfo`, `ChangeBandOutput`, `ChangeCloudInfo`, `ChangeGrid`, `ChangeAlignment`,
+  `ChangeMasking`, `ChangeComparison`, `ChangeStatBlock/ChangeStatistics`, `ChangeClassSummary`,
+  `ChangeWaterExtent`, `ChangeClassification`, `ChangeMask`, `ChangeUnavailableInfo`,
+  `ChangeTypeBlock`, `ChangeProvenance`, `ChangeDetectionRequest/Response`.
+- [x] `src/lib/api/change.ts`: `analyzeChange` (before/after scene ids inside payload).
+- [x] `src/components/analysis/ChangeDetectionPanel.tsx`: before/after scene selects
+  (sessions scenes sorted by acquisition date, same-day guard), vegetation/water toggles,
+  mask-clouds + weather-context toggles, NDVI-delta & NDWI threshold inputs with inline
+  validation, per-scene band retrieval chips (B03/B04/B08/SCL), Analyze button, per-type
+  completed cards (legend, stat grid over compared pixels, class-area table, water extent,
+  alignment/masking provenance, limitations note) and unavailable cards, map-overlay
+  segmented toggle (mask data-URI on the map), weather context cards, top-level unavailable.
+- [x] `src/components/map/LocationMap.tsx`: new `MaskOverlay` — `L.imageOverlay` from the
+  mask data URI to `[[south, west],[north, east]]`, opacity 0.75, fit-bounds on change;
+  new optional `maskOverlay` prop.
+- [x] `AnalysisWorkspace.tsx`: lifted `changeOverlay` state; new **Change detection**
+  section gated on an active session; overlay wiring map ↔ panel.
+- [x] `npm run typecheck` → clean; `npm run lint` → 0 errors (only pre-existing Phase 4
+  warnings); `npm run build` → green; `frontend/src/lib` tracking unaffected.
+
+### Documentation
+
+- [x] `docs/api-spec.md` §13 — change-detection endpoint, request/response shape,
+  ordering rule, error/unavailable codes, derived-on-demand note, suite count 257.
+- [x] `docs/scientific-methodology.md` — comparison mask (before ∩ after valid),
+  alignment grid + nearest resampling, inclusive classification boundaries, class codes,
+  statistics semantics, weather as non-causal reference, limitations.
+- [x] `docs/project-management/roadmap.md` — 6D completed point.
+- [x] `.env.example` + `backend/.env.example` — `GEOAGENT_CHANGE_*` vars documented.
 
 ## Phase 6E — Historical intelligence (planned)
 
@@ -298,4 +407,5 @@ Correlate agri/aqua outputs with stored weather observations (Phase 5) for an AO
 6A was committed (`feat(agri): add agricultural geospatial intelligence`) and pushed to
 `origin/main`. **6B is committed as `feat(aqua): add water intelligence`** and pushed. **6C is
 committed as `feat(weather): integrate weather context with geospatial intelligence`** and
-pushed; after verifying a clean tree, proceed to **Phase 6D — Change Detection**.
+pushed. **6D is committed as `feat(change-detection): add satellite change detection engine`**
+and pushed; after verifying a clean tree, proceed to **Phase 6E — Historical intelligence**.

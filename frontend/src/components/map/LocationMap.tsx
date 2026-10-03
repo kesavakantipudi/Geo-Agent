@@ -19,11 +19,17 @@ import "leaflet-draw/dist/leaflet.draw.css";
 
 export type DrawMode = "polygon" | "rectangle";
 
+export interface ChangeMaskOverlay {
+  bounds: { west: number; south: number; east: number; north: number };
+  data_uri: string;
+}
+
 interface LocationMapProps {
   aoi: GeoJsonGeometry | null;
   drawMode: DrawMode | null;
   onDrawCreated: (geometry: GeoJsonGeometry) => void;
   placeCenter: Centroid | null;
+  maskOverlay?: ChangeMaskOverlay | null;
 }
 
 function DrawControl({
@@ -122,7 +128,44 @@ function PlaceMarker({ placeCenter }: { placeCenter: Centroid | null }) {
   return null;
 }
 
-export function LocationMap({ aoi, drawMode, onDrawCreated, placeCenter }: LocationMapProps) {
+function MaskOverlay({ overlay }: { overlay: ChangeMaskOverlay | null | undefined }) {
+  const map = useMap();
+  const layerRef = useRef<L.ImageOverlay | null>(null);
+
+  useEffect(() => {
+    layerRef.current?.remove();
+    layerRef.current = null;
+    if (!overlay) return;
+
+    const bounds = L.latLngBounds(
+      [overlay.bounds.south, overlay.bounds.west],
+      [overlay.bounds.north, overlay.bounds.east],
+    );
+    const layer = L.imageOverlay(overlay.data_uri, bounds, {
+      opacity: 0.75,
+      interactive: false,
+    }).addTo(map);
+    if (bounds.isValid() && !bounds.equals(map.getBounds())) {
+      map.fitBounds(bounds, { padding: [28, 28], maxZoom: 16 });
+    }
+    layerRef.current = layer;
+
+    return () => {
+      layerRef.current?.remove();
+      layerRef.current = null;
+    };
+  }, [overlay, map]);
+
+  return null;
+}
+
+export function LocationMap({
+  aoi,
+  drawMode,
+  onDrawCreated,
+  placeCenter,
+  maskOverlay,
+}: LocationMapProps) {
   return (
     <div className="relative h-full w-full">
       <MapContainer
@@ -136,6 +179,7 @@ export function LocationMap({ aoi, drawMode, onDrawCreated, placeCenter }: Locat
         <TileLayer attribution={MAP_TILE_ATTRIBUTION} url={MAP_TILE_URL} maxZoom={MAP_MAX_ZOOM} />
         <DrawControl drawMode={drawMode} onDrawCreated={onDrawCreated} />
         <AoiOverlay aoi={aoi} />
+        <MaskOverlay overlay={maskOverlay} />
         <PlaceMarker placeCenter={placeCenter} />
       </MapContainer>
       {drawMode && (

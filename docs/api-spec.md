@@ -1,8 +1,70 @@
 # GeoAgent — API Specification
 
-> **Status:** Phases 2–5, Phase 6A (Agri Agent), Phase 6B (Aqua Agent), and Phase 6C (Weather Context) are implemented. Phase 6B adds `POST /aqua/analyze` — deterministic NDWI open-water detection over locally retrieved band assets, sharing the Phase 6A windowed index core (`app/services/geospatial`). Unlike Agri, Aqua results are **derived on demand and never persisted** (no `aqua_analyses` table, no GET endpoints); every call recomputes from the retrieved bands, so there is nothing to go stale. It honors the same explicit `unavailable` states (HTTP 200, never fabricated numbers) and provenance-rich metadata. Phase 6C adds `POST /weather/context` (weather context around a satellite observation, aligned with the acquisition day ± a configured window, and aggregates **stored** Phase 5 observations without ever calling a provider). The suite has 216 passing integration tests. Endpoints below not yet implemented remain planned; planned modules stay as recorded design intent.
+> **Status:** Phases 2–5, Phase 6A (Agri Agent), Phase 6B (Aqua Agent), Phase 6C (Weather Context), and Phase 6D (Change Detection) are implemented. Phase 6B adds `POST /aqua/analyze` — deterministic NDWI open-water detection over locally retrieved band assets, sharing the Phase 6A windowed index core (`app/services/geospatial`). Unlike Agri, Aqua results are **derived on demand and never persisted** (no `aqua_analyses` table, no GET endpoints); every call recomputes from the retrieved bands, so there is nothing to go stale. It honors the same explicit `unavailable` states (HTTP 200, never fabricated numbers) and provenance-rich metadata. Phase 6C adds `POST /weather/context` (weather context around a satellite observation, aligned with the acquisition day ± a configured window, and aggregates **stored** Phase 5 observations without ever calling a provider). Phase 6D adds `POST /change-detection/analyze` (deterministic two-scene comparison of NDVI/NDWI over the session AOI, derived on demand and never persisted). The suite has 257 passing integration tests. Endpoints below not yet implemented remain planned; planned modules stay as recorded design intent.
 
 Reference: [`PRD.md`](../PRD.md) §28.
+
+## 13. Phase 6D — implemented endpoint (change detection)
+
+Base path `/api/v1`, same cookie/bearer auth and error contract. A comparison is
+anchored to an analysis session (its AOI and access rules) and **two** scenes the
+caller can access, in strict temporal order. Change is defined over pixels valid in
+**both** observations; invalid (e.g. cloud-masked) pixels are never counted as
+change. Results are **derived on demand and never persisted** — every call recomputes
+from the retrieved bands, so there is nothing to go stale.
+
+| Method | Path | Summary |
+| --- | --- | --- |
+| `POST` | `/change-detection/analyze` | Body: `{analysis_session_id, before_scene_id, after_scene_id, aoi?, types?=["vegetation","water"], mask_clouds?=true, vegetation_threshold?, water_threshold?, include_weather?=true}`. Returns `ChangeDetectionResponse` (top-level `status` `completed`/`unavailable`, one block per requested type). |
+
+Ordering rule: `before.acquisition_date` must be strictly earlier than
+`after.acquisition_date`; `same_scene` (identical ids) and `before_after_order`
+(same day or reversed) are rejected with HTTP 400. The comparison is computed on the
+**before scene's AOI-window grid**; if the after grid differs, the after bands are
+**nearest-neighbour resampled** onto it (`alignment.mode == "none"` when identical,
+`"nearest"` otherwise, `resampled_with` recorded). Misaligned/incompatible grids →
+per-type `incompatible_raster_alignment` (never silently warped).
+
+Each completed block (`vegetation`, `water`) carries: `index` (ndvi/ndwi spec),
+`bands` (`{scene: before|after, role, asset_key, retrieval_id}`), `cloud`
+(`mask_clouds`, per-side `cloud_mask_available` + `masked_classes`), `comparison`
+(`grid` incl. transform, `alignment`, `masking` with before/after/comparison-valid
+counts+percentages and invalid pixels), `statistics` (`computed_over`, `before`,
+`after`, and vegetation `delta` — mean/median/stddev/min/max over the comparison mask
+only; `delta` is `null` for water, which is reported as transitions), `classification`
+(`label`, `boundary`, `threshold`, `delta_range` for vegetation, `water_extent`
+{before/after/delta pixels+percentages} for water, `classes` with `{pixel_count,
+pixel_pct, area_m2}`, `comparison_pixels`, `invalid_pixel_count`, `limitations_note`),
+`mask` (`encoding: "PNG"`, base64 `data_uri`, `width`/`height`/`crs`, `classes`
+code→label map, `bounds` [west,south,east,north], `pixel_area_m2`), `warnings`, and
+`unavailable` for per-type failures.
+
+Type specifics: vegetation classifies `delta = NDVI(after) − NDVI(before)` with the
+**inclusive** boundary `delta >= +threshold → increase`, `delta <= −threshold →
+decrease`, else stable (default `vegetation_threshold = 0.10`, validated `(0, 2]`;
+mask codes 0/1/2, 255 invalid). Water reuses the Aqua boundary
+`water = NDWI >= water_threshold` (default `0.0`, validated `[−1, 1]`) per date and
+reports transitions: 0 unchanged, 1 new water, 2 lost water, 3 persistent water,
+255 invalid.
+
+400 validation codes: `same_scene`, `before_after_order`, `scene_not_associated`
+(scenes not discovered by that session), `session_has_no_aoi`, `change_type_required`,
+`change_type_unsupported`, `invalid_vegetation_threshold`, `invalid_water_threshold`.
+Per-type unavailable codes (HTTP 200): `bands_not_retrieved` (B04/B08/(SCL) vegetation,
+B03/B08/(SCL) water), `insufficient_valid_pixels` (below
+`GEOAGENT_CHANGE_MIN_VALID_FRACTION`), `incompatible_raster_alignment`,
+`no_valid_comparison_pixels`, `provider_unsupported`. When no requested type
+completed, the top-level `status` is `unavailable` with code
+`all_requested_analyses_unavailable`. The top-level response is `completed` when at
+least one type completed.
+
+Weather: with `include_weather: true` (default), two descriptive
+`WeatherContext`s (before, after) are attached via the configured default window and
+variables — observation reference only, never a causal claim. `provenance` records
+`engine_version: "geoagent-change-detection-v1"`, `derived_on_demand: true`,
+`comparison_semantics`, `invalid_is_change: false`, `resampling`, `area_method`,
+`libraries` and `analyzed_at`. Thresholds and class boundaries are heuristic and
+documented — see `docs/scientific-methodology.md`.
 
 ## 12. Phase 6C — implemented endpoint (weather context)
 

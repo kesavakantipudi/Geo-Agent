@@ -137,7 +137,97 @@ weather actually do around this scene?", and it never claims that weather
   e.g. "NDVI dropped because rainfall decreased" — correlation of timing is
   recorded, causation is not inferred.
 
-## 3. Cloud/quality masking
+## 3. Change detection (two-scene comparison, Phase 6D)
+
+A comparison is anchored to an analysis session (its AOI and access rules) and
+**two** scenes the caller can access: `before_scene_id` (earlier) and
+`after_scene_id` (later). The temporal ordering rule is
+`before.acquisition_date < after.acquisition_date`; the same scene twice or two
+same-day scenes is rejected (`same_scene` / `before_after_order`). Results are
+**derived on demand** — nothing is persisted.
+
+### Aligned comparison grid
+
+- The comparison grid is the **before scene's AOI-window grid**.
+- If the after scene's window grid is geometrically identical (same CRS, north-up,
+  resolution within `1e-3 m`), the grids are used as-is (`alignment.mode = "none"`).
+- Otherwise the after bands are **nearest-neighbour resampled** onto the before
+  window grid (`alignment.mode = "nearest"`, `resampled_with` recorded). Nearest
+  resampling is used for integer-labelled data only — it is never used to invent
+  reflectance values. Grids whose CRS is incompatible or whose resolution differs
+  beyond tolerance → `incompatible_raster_alignment` (explicit, not silently warped).
+
+### Comparison mask ("pixels valid in both observations")
+
+Change is only defined where both observations are valid:
+
+| Field | Definition |
+| --- | --- |
+| `total_pixels` | AOI-window pixels before masking. |
+| `before_valid_pixels` / `after_valid_pixels` | Valid pixels per observation (cloud-masked). |
+| `comparison_valid_pixels` | Valid in **both** (the pixels change is computed over). |
+| `invalid_pixels` | `total − comparison_valid`. |
+| `comparison_valid_pct` | `comparison_valid / total × 100`. |
+
+A cloud-masked invalid pixel is **never** counted as change; it simply drops out of
+the comparison (255 in the mask). If fewer than
+`GEOAGENT_CHANGE_MIN_VALID_FRACTION` (0.01) of pixels are comparable →
+`insufficient_valid_pixels`; if exactly zero overlap the scenes still share →
+`no_valid_comparison_pixels`.
+
+### Vegetation change (NDVI delta)
+
+- `delta = NDVI(after) − NDVI(before)` pixelwise over the comparison mask.
+- **Inclusive, documented heuristic boundary** (default
+  `change_vegetation_threshold = 0.10`, validated `(0, 2]`):
+  - `delta >= +threshold` → **increase**
+  - `delta <= −threshold` → **decrease**
+  - otherwise → **stable**
+- Mask codes: `0` stable, `1` increase, `2` decrease, `255` invalid. The boundary
+  is surfaced as `classification.boundary` and in the UI; the note states this is a
+  **documented threshold, not a validated change assertion**.
+
+### Water change (NDWI membership by date)
+
+- Water is classified per observation with the shared Aqua boundary
+  `water = NDWI >= threshold` (inclusive; default `0.0`, validated `[−1, 1]`).
+- The per-pixel transition between the two dates yields the classes:
+  `0` unchanged (non-water both), `1` new water (gained), `2` lost water,
+  `3` persistent water, `255` invalid.
+- `water_extent` reports `before_pixels`, `after_pixels`, `delta_pixels` and the
+  share of the comparison mask each date was water. Water is reported as a
+  transition count, so **no delta statistics block** is emitted
+  (`statistics.delta == null`).
+
+### Statistics
+
+`statistics.before` / `statistics.after` (and vegetation `statistics.delta`) are
+mean/median/stddev/min/max computed **over the comparison mask only** — never over
+per-observation validity alone — so before/after/change numbers cover the same
+pixels. Canopy-change and water area percentages are shares of
+`comparison_valid_pixels`, not the unmasked AOI.
+
+### Weather is reference, not cause
+
+When `include_weather: true`, two descriptive weather contexts (before, after) are
+attached via `weather_context_service.default_context`. They express correlation
+context around the two observations only and are never used to assert causation.
+
+### Change-detection unavailable codes
+
+| Code | When |
+| --- | --- |
+| `bands_not_retrieved` | Required bands (vegetation B04/B08/(SCL); water B03/B08/(SCL)) not retrieved. |
+| `insufficient_valid_pixels` | Comparable valid fraction below `GEOAGENT_CHANGE_MIN_VALID_FRACTION`. |
+| `incompatible_raster_alignment` | Before/after grids cannot be aligned on a shared grid. |
+| `no_valid_comparison_pixels` | Zero pixels valid in both observations. |
+| `provider_unsupported` | No band-role map for the scene's provider. |
+
+The top-level response is `completed` when at least one requested type completed;
+per-type blocks carry their own `unavailable` and a partial invalid mask where
+meaningful.
+
+## 4. Cloud/quality masking
 
 - SCL (Scene Classification Layer) values: `0` no-data, `1` saturated/defective,
   `2` dark-area pixels, `3` cloud shadows, `4` vegetation, `5` non-vegetated,
@@ -153,7 +243,7 @@ weather actually do around this scene?", and it never claims that weather
 - `excluded_pixel_pct` = fraction of AOI-window pixels excluded by masking (or
   `0` when unmasked). `valid_pixel_pct` = valid ÷ `aoi_pixel_count`.
 
-## 4. Statistics
+## 5. Statistics
 
 Computed over the valid (masked) NDVI raster within the AOI mask:
 
@@ -173,7 +263,7 @@ Computed over the valid (masked) NDVI raster within the AOI mask:
 All calculations drop non-finite values (NaN/inf `!= value`). `None`/empty →
 index not computed.
 
-## 5. Vegetation-condition tiers (heuristic)
+## 6. Vegetation-condition tiers (heuristic)
 
 Tier bands are **orientation only**. They are surfaced in responses under
 `classification.threshold_source` and labeled in the UI as heuristic, not a
@@ -192,7 +282,7 @@ validated crop-health/yield/drought model.
   toward the *lower* NDVI tier (deliberate pessimism for decision support).
 - `pixel_pct` sums are the share of *valid* AOI pixels in each tier.
 
-## 6. Unavailable reasons (honesty contract)
+## 7. Unavailable reasons (honesty contract)
 
 | Code | When |
 | --- | --- |
@@ -208,19 +298,24 @@ validated crop-health/yield/drought model.
 Only **completed** analyses are persisted and listable; unavailable state is
 returned (HTTP 200) but not stored.
 
-## 7. Algorithm and provenance
+## 8. Algorithm and provenance
 
 - `processing.algorithm = "geoagent-ndvi-v1"` (Agri) or `"geoagent-ndwi-v1"`
   (Aqua). Both run on the shared windowed core in `backend/app/services/geospatial`
   (`normalized_difference`, `analyze_index_ratio`), where capital letters in the
   name denote the normalized-difference formula family (`ND**I`), not a sub-version.
+- Change detection runs the same NDVI/NDWI computations per scene and compares on
+  the before-grid through `backend/app/services/change_detection`
+  (`alignment.verify_alignment`/`resample_nearest`, `classification`,
+  `encoding.encode_mask_png`); `provenance.engine_version =
+  "geoagent-change-detection-v1"`, `derived_on_demand = true`.
 - `processing.libraries` records `rasterio`, `affine`, `numpy`, `shapely`,
   `pyproj` versions used for the computation.
 - `processing.window` records the `(col_off, row_off, width, height)` window in
   the scene raster grid actually read; `acquisition_date`, `cloud_cover`,
   `provider`, `platform`, `provider_scene_id` identify the source scene.
 
-## 8. Verification
+## 9. Verification
 
 - Unit tests verify index math for known synthetic scenes (pure vegetation, mixed
   field/water, pure water), tier/water thresholds, histogram/tie-break, statistics,
@@ -240,3 +335,11 @@ returned (HTTP 200) but not stored.
   variable/provider validation, the explicit `no_weather_observations` state,
   precipitation aggregation through the real Phase 5 storage path, and the
   embedded `weather_context` on completed/unavailable Agri and Aqua results).
+- Change-detection tests: `backend/tests/test_change_detection_unit.py` verifies
+  the pure alignment/classification layer (inclusive vegetation boundary, water
+  transitions, offset-grid nearest resampling, CRS/resolution mismatch,
+  invalid-never-changes) and the full two-scene pipeline for both types;
+  `backend/tests/test_change_detection.py` exercises the endpoint end to end
+  (auth/access, `same_scene`/`before_after_order`, per-type unavailable states,
+  completed provenance + weather contexts, and the derived-on-demand contract —
+  no `change%` table exists after analysis).

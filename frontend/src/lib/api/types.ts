@@ -516,6 +516,191 @@ export interface AquaAnalyzeResponse {
   results: AquaAnalysisResult[];
 }
 
+export type ChangeType = "vegetation" | "water";
+export type ChangeStatus = "completed" | "unavailable";
+
+export interface ChangeSceneReference {
+  id: number;
+  scene_id: string;
+  provider: string;
+  platform: string | null;
+  acquisition_date: string;
+  cloud_cover: number | null;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface ChangeIndexInfo {
+  name: string;
+  label: string;
+  formula: string;
+  band_roles: Record<string, string>;
+  units: string;
+  range: [number, number];
+  description: string;
+}
+
+export interface ChangeBandOutput {
+  scene: "before" | "after";
+  role: string;
+  asset_key: string;
+  retrieval_id: number;
+}
+
+export interface ChangeCloudSide {
+  cloud_mask_available: boolean;
+  masked_classes: number[];
+}
+
+export interface ChangeCloudInfo {
+  mask_clouds: boolean;
+  before: ChangeCloudSide;
+  after: ChangeCloudSide;
+}
+
+export interface ChangeGrid {
+  crs: string;
+  transform: Record<string, number>;
+  width: number;
+  height: number;
+  pixel_size_m: number[];
+}
+
+export interface ChangeAlignment {
+  mode: "none" | "nearest";
+  resampled_with: string | null;
+  crs: string;
+  width: number;
+  height: number;
+  pixel_size_m: number[];
+  note: string;
+}
+
+export interface ChangeMasking {
+  total_pixels: number;
+  before_valid_pixels: number;
+  before_valid_pct: number;
+  after_valid_pixels: number;
+  after_valid_pct: number;
+  comparison_valid_pixels: number;
+  comparison_valid_pct: number;
+  invalid_pixels: number;
+}
+
+export interface ChangeComparison {
+  grid: ChangeGrid;
+  alignment: ChangeAlignment;
+  masking: ChangeMasking;
+}
+
+export interface ChangeStatBlock {
+  min: number | null;
+  max: number | null;
+  mean: number | null;
+  median: number | null;
+  stddev: number | null;
+  valid_pixels: number;
+}
+
+export interface ChangeStatistics {
+  computed_over: string;
+  before: ChangeStatBlock;
+  after: ChangeStatBlock;
+  delta: ChangeStatBlock | null;
+}
+
+export interface ChangeClassSummary {
+  pixel_count: number;
+  pixel_pct: number;
+  area_m2?: number | null;
+}
+
+export interface ChangeWaterExtent {
+  before_pixels: number;
+  after_pixels: number;
+  delta_pixels: number;
+  before_pct: number;
+  after_pct: number;
+}
+
+export interface ChangeClassification {
+  label: string;
+  boundary: string;
+  threshold: number;
+  delta_range?: number[] | null;
+  water_extent?: ChangeWaterExtent | null;
+  comparison_pixels: number;
+  classes: Record<string, ChangeClassSummary>;
+  invalid_pixel_count: number;
+  limitations_note: string;
+}
+
+export interface ChangeMask {
+  encoding: string;
+  data_uri: string;
+  width: number;
+  height: number;
+  crs: string;
+  classes: Record<string, string>;
+  bounds: { west: number; south: number; east: number; north: number };
+  pixel_area_m2: number;
+}
+
+export interface ChangeUnavailableInfo {
+  code: string;
+  reason: string;
+  details: string[];
+}
+
+export interface ChangeTypeBlock {
+  type: ChangeType;
+  status: ChangeStatus;
+  index: ChangeIndexInfo | null;
+  bands: ChangeBandOutput[] | null;
+  cloud: ChangeCloudInfo | null;
+  comparison: ChangeComparison | null;
+  statistics: ChangeStatistics | null;
+  classification: ChangeClassification | null;
+  mask: ChangeMask | null;
+  warnings: string[];
+  unavailable: ChangeUnavailableInfo | null;
+}
+
+export interface ChangeProvenance {
+  engine_version: string;
+  derived_on_demand: boolean;
+  comparison_semantics: string;
+  invalid_is_change: boolean;
+  resampling: string;
+  area_method: string;
+  libraries: Record<string, string>;
+  analyzed_at: string;
+}
+
+export interface ChangeDetectionResponse {
+  status: ChangeStatus;
+  before: ChangeSceneReference;
+  after: ChangeSceneReference;
+  types_requested: string[];
+  vegetation: ChangeTypeBlock | null;
+  water: ChangeTypeBlock | null;
+  weather_contexts: WeatherContext[] | null;
+  provenance: ChangeProvenance | null;
+  warnings: string[];
+  unavailable: ChangeUnavailableInfo | null;
+}
+
+export interface ChangeDetectionRequest {
+  analysis_session_id: number;
+  before_scene_id: number;
+  after_scene_id: number;
+  aoi?: GeoJsonGeometry | null;
+  types: ChangeType[];
+  mask_clouds: boolean;
+  vegetation_threshold?: number | null;
+  water_threshold?: number | null;
+  include_weather: boolean;
+}
+
 export interface AnalysisSession {
   id: number;
   user_id: number;

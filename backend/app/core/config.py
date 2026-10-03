@@ -155,6 +155,20 @@ class Settings(BaseSettings):
         "temperature_2m,temperature_2m_max,temperature_2m_min,relative_humidity_2m,precipitation"
     )
 
+    # Change detection (Phase 6D). Compares two satellite observations of the
+    # same AOI pixel-by-pixel for a single normalized-difference index: NDVI
+    # (vegetation change) and NDWI (water extent change). The change threshold
+    # is a documented heuristic: vegetation is "increase"/"decrease" when the
+    # resampled-NDVI delta reaches ``±change_vegetation_threshold`` (raw NDVI
+    # delta ranges over [-2, 2]); water uses the Aqua ``aqua_water_threshold``
+    # boundary for each observation and reports new/lost/persistent transitions.
+    # A comparison needs pixels valid in BOTH observations; below
+    # ``change_min_valid_fraction`` the comparison is reported as unavailable.
+    change_vegetation_threshold: float = 0.10
+    change_min_valid_fraction: float = 0.01
+    change_max_window_pixels: int = 20_000_000
+    change_detection_engine_version: str = "geoagent-change-detection-v1"
+
     @model_validator(mode="after")
     def _validate_secret_key(self) -> Settings:
         if self.app_env != "test" and (not self.auth_secret_key or len(self.auth_secret_key) < 32):

@@ -308,6 +308,23 @@ def analyze_index_ratio(
             "scl_masked_classes": [int(value) for value in index.scl_masked_classes],
             "zero_as_nodata": index.zero_is_nodata,
             "window": {"width": int(band_shape[1]), "height": int(band_shape[0])},
+            "grid": {
+                "crs": str(numerator_win.crs),
+                "transform": {
+                    "a": float(numerator_win.transform.a),
+                    "b": float(numerator_win.transform.b),
+                    "c": float(numerator_win.transform.c),
+                    "d": float(numerator_win.transform.d),
+                    "e": float(numerator_win.transform.e),
+                    "f": float(numerator_win.transform.f),
+                },
+                "width": int(band_shape[1]),
+                "height": int(band_shape[0]),
+                "pixel_size_m": [
+                    float(abs(numerator_win.transform.a)),
+                    float(abs(numerator_win.transform.e)),
+                ],
+            },
             "pixel_area_m2": round(cell_area, 4),
             "valid_pixel_area_m2": round(float(valid_pixel_count * cell_area), 2),
         },

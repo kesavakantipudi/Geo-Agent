@@ -10,10 +10,12 @@ import {
 import { SessionsList } from "@/components/analysis/SessionsList";
 import { AgriPanel } from "@/components/analysis/AgriPanel";
 import { AquaPanel } from "@/components/analysis/AquaPanel";
+import { ChangeDetectionPanel } from "@/components/analysis/ChangeDetectionPanel";
 import { WeatherDiscoveryPanel } from "@/components/analysis/WeatherDiscoveryPanel";
 import { AoiPanel } from "@/components/map/AoiPanel";
 import { PlaceSearch } from "@/components/map/PlaceSearch";
-import type { DrawMode } from "@/components/map/LocationMap";
+import type { ChangeOverlay } from "@/components/analysis/ChangeDetectionPanel";
+import type { ChangeMaskOverlay, DrawMode } from "@/components/map/LocationMap";
 import { ApiError } from "@/lib/api/client";
 import {
   createAnalysisSession,
@@ -77,6 +79,7 @@ export function AnalysisWorkspace() {
   const [savedLocations, setSavedLocations] = useState<SavedLocation[]>([]);
   const [sessions, setSessions] = useState<AnalysisSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [changeOverlay, setChangeOverlay] = useState<ChangeOverlay | null>(null);
 
   const [config, setConfig] = useState<AnalysisConfig>(EMPTY_CONFIG);
   const [activeSession, setActiveSession] = useState<AnalysisSession | null>(null);
@@ -263,6 +266,7 @@ export function AnalysisWorkspace() {
     setGeometryInfo(null);
     setGeomError(null);
     setPlaceCenter(null);
+    setChangeOverlay(null);
     setSaveState("idle");
     setSaveError(null);
   }
@@ -287,6 +291,7 @@ export function AnalysisWorkspace() {
               drawMode={drawMode}
               onDrawCreated={handleDrawCreated}
               placeCenter={placeCenter}
+              maskOverlay={changeOverlay ? toMaskOverlay(changeOverlay) : null}
             />
           </div>
         </div>
@@ -372,6 +377,26 @@ export function AnalysisWorkspace() {
           </p>
         )}
       </Section>
+
+      <Section title="Change detection">
+        {activeSession ? (
+          <ChangeDetectionPanel
+            sessionId={activeSession.id}
+            aoi={aoi}
+            overlay={changeOverlay}
+            onOverlayChange={setChangeOverlay}
+          />
+        ) : (
+          <p className="text-xs text-zinc-500">
+            Save or reopen an analysis session to compare vegetation (NDVI) and water (NDWI)
+            between two Sentinel-2 scenes.
+          </p>
+        )}
+      </Section>
     </div>
   );
+}
+
+function toMaskOverlay(overlay: ChangeOverlay): ChangeMaskOverlay {
+  return { bounds: overlay.mask.bounds, data_uri: overlay.mask.data_uri };
 }

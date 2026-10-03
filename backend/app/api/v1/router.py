@@ -7,6 +7,7 @@ from app.api.v1.endpoints import (
     analysis_sessions,
     aqua,
     auth,
+    change_detection,
     geometries,
     health,
     organizations,
@@ -32,3 +33,4 @@ api_router.include_router(satellite.router)
 api_router.include_router(weather.router)
 api_router.include_router(agri.router)
 api_router.include_router(aqua.router)
+api_router.include_router(change_detection.router)
