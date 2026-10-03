@@ -249,6 +249,48 @@ def delete_retrieval(db: Session, actor_id: int, retrieval_id: int) -> None:
     db.commit()
 
 
+def completed_retrieval_paths(
+    db: Session,
+    scene_id: int,
+    asset_keys: list[str],
+) -> tuple[dict[str, str], dict[str, int], list[str]]:
+    """Latest completed retrieval per asset key -> (absolute path, retrieval id).
+
+    Shared by every derived intelligence service (agriculture, water) to resolve
+    which of a scene's retrieved band assets are available locally for analysis.
+    A key the scene has never downloaded is reported in the ``missing`` list.
+    """
+    rows = (
+        db.execute(
+            select(SatelliteRetrieval)
+            .where(
+                SatelliteRetrieval.scene_id == scene_id,
+                SatelliteRetrieval.asset_key.in_(asset_keys),
+                SatelliteRetrieval.status == "completed",
+                SatelliteRetrieval.stored_path.is_not(None),
+            )
+            .order_by(SatelliteRetrieval.requested_at.desc(), SatelliteRetrieval.id.desc())
+        )
+        .scalars()
+        .all()
+    )
+    storage_dir = Path(get_settings().retrieval_storage_dir)
+    paths: dict[str, str] = {}
+    ids: dict[str, int] = {}
+    keyword_slots = {key for key in asset_keys}
+    for row in rows:
+        if row.asset_key not in keyword_slots:
+            continue
+        target = storage_dir / row.stored_path
+        if not target.is_file():
+            continue
+        paths[row.asset_key] = str(target)
+        ids[row.asset_key] = row.id
+        keyword_slots.discard(row.asset_key)
+    missing = [key for key in asset_keys if key not in paths]
+    return paths, ids, missing
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------

@@ -10,9 +10,10 @@ Reference: [`PRD.md`](../PRD.md) §28; [`api-spec.md`](api-spec.md) §10.
 
 ## 1. Principles
 
-1. **Deterministic indices first.** The only computed spectral index shipped in
-   Phase 6A is the Normalized Difference Vegetation Index (NDVI) from Sentinel-2
-   Level-2A surface reflectance (B04 red, B08 NIR). No machine-learning or
+1. **Deterministic indices first.** The only computed spectral indices shipped are
+   the Normalized Difference Vegetation Index (NDVI, Phase 6A) and the Normalized
+   Difference Water Index (NDWI, Phase 6B), both from Sentinel-2 Level-2A surface
+   reflectance (NDVI: B04 red, B08 NIR; NDWI: B03 green, B08 NIR). No machine-learning or
    provider-side "product" values are embedded.
 2. **Never fabricate data.** Missing bands, unsupported providers, out-of-AOI
    scenes, or essentially fully-masked AOIs produce an explicit `unavailable`
@@ -45,6 +46,30 @@ Reference: [`PRD.md`](../PRD.md) §28; [`api-spec.md`](api-spec.md) §10.
   read, and the AOI mask (shapely within-raster) selects pixels. Reads are size
   capped (`GEOAGENT_AGRI_MAX_WINDOW_PIXELS`, default 20 000 000); larger windows →
   `aoi_window_too_large`.
+
+## 2. NDWI (Sentinel-2 Level-2A, Phase 6B)
+
+- **Formula:** `NDWI = (GREEN − NIR) / (GREEN + NIR + ε)`, with a tiny `ε` to avoid
+  division by zero. GREEN = surface reflectance band **B03**, NIR = band **B08**
+  (the classic open-water index; also reported as the McFeeters 1996 formulation).
+- **Domain:** nominally `[-1, 1]`; valid (non-masked) pixels are those where the
+  expression is finite. `zero_as_nodata = true` for this index. `ε` is clamped so
+  that a zero-green, zero-nir pixel is marked invalid (not forced to 0).
+- **Band roles per provider** (see `backend/app/services/geospatial/bands.py`):
+  - `planetary-computer` and `cdse`: `green → B03`, `nir → B08`, `cloud_mask → SCL`.
+  - Any other provider → `provider_unsupported` unavailable.
+- **Water classification:** `water = NDWI >= threshold (inclusive)`. Default
+  threshold `GEOAGENT_AQUA_WATER_THRESHOLD` (= **0.0**), overridable per call via
+  `threshold` (must stay within `[-1, 1]`). The applied threshold is echoed in the
+  response with `threshold_source` noting it is heuristic and not a validated
+  flooded-area model. Only `ndwi` is registered for Aqua
+  (`aqua_index_unsupported` for anything else).
+- **Area semantics:** `water.area_m2 = water_pixels × pixel_area_m2`;
+  `water.pct_of_aoi_area = water_area / aoi_area_m2 × 100`; `water.pixel_pct` is
+  the share of *valid* pixels. `non_water.area` is never reported — only pixel
+  counts/shares — because land area is not a water-model output.
+- **No persistence:** results are derived on demand from the retrieved bands and
+  are never stored, so there is no stale-watermark risk.
 
 ## 3. Cloud/quality masking
 
@@ -119,7 +144,10 @@ returned (HTTP 200) but not stored.
 
 ## 7. Algorithm and provenance
 
-- `processing.algorithm = "geoagent-ndvi-v1"`.
+- `processing.algorithm = "geoagent-ndvi-v1"` (Agri) or `"geoagent-ndwi-v1"`
+  (Aqua). Both run on the shared windowed core in `backend/app/services/geospatial`
+  (`normalized_difference`, `analyze_index_ratio`), where capital letters in the
+  name denote the normalized-difference formula family (`ND**I`), not a sub-version.
 - `processing.libraries` records `rasterio`, `affine`, `numpy`, `shapely`,
   `pyproj` versions used for the computation.
 - `processing.window` records the `(col_off, row_off, width, height)` window in
@@ -128,8 +156,12 @@ returned (HTTP 200) but not stored.
 
 ## 8. Verification
 
-- Unit tests (`backend/tests/test_agri_unit.py`) verify index math for known
-  synthetic scenes (pure vegetation, mixed field/water), tier thresholds,
-  histogram/tie-break, statistics, and the unavailable codes.
-- API tests (`backend/tests/test_agri.py`) verify auth/access, unavailable
-  responses, persistence of completed results only, and 422 validation codes.
+- Unit tests verify index math for known synthetic scenes (pure vegetation, mixed
+  field/water, pure water), tier/water thresholds, histogram/tie-break, statistics,
+  and the unavailable codes — `backend/tests/test_agri_unit.py` (NDVI),
+  `backend/tests/test_aqua_unit.py` (NDWI, inclusive threshold boundary, area math,
+  masking).
+- API tests verify auth/access, unavailable responses, persistence of completed
+  Agri results only, and 422 validation codes — `backend/tests/test_agri.py`,
+  `backend/tests/test_aqua.py`. The Aqua suite additionally asserts that the
+  endpoint creates **no** `aqua_%` table (derived-on-demand contract).

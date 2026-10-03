@@ -22,9 +22,15 @@ from fastapi.testclient import TestClient
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
-ADMIN_URL = "postgresql://geoagent:geoagent@localhost:54932/geoagent"
+# PostgreSQL host/port are overridable (GEOAGENT_TEST_PG_HOST/PORT) so the suite
+# can target a published docker port other than the default 54932 on machines
+# where Windows reserves that range.
+PG_HOST = os.getenv("GEOAGENT_TEST_PG_HOST", "localhost")
+PG_PORT = os.getenv("GEOAGENT_TEST_PG_PORT", "54932")
+
+ADMIN_URL = f"postgresql://geoagent:geoagent@{PG_HOST}:{PG_PORT}/geoagent"
 TEST_DB = f"geoagent_test_{uuid.uuid4().hex[:10]}"
-TEST_URL = f"postgresql+psycopg://geoagent:geoagent@localhost:54932/{TEST_DB}"
+TEST_URL = f"postgresql+psycopg://geoagent:geoagent@{PG_HOST}:{PG_PORT}/{TEST_DB}"
 
 os.environ["GEOAGENT_APP_ENV"] = "test"
 os.environ["GEOAGENT_AUTH_SECRET_KEY"] = "test-only-secret-key-that-is-at-least-32-chars!!"

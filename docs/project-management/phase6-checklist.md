@@ -91,12 +91,94 @@ provenance-rich results, and full verification before commit/push.
 - [x] `docs/project-management/roadmap.md` — Phase 6 note + this checklist linked.
 - [x] `.env.example` + `backend/.env.example` — `GEOAGENT_AGRI_*` vars documented.
 
-## Phase 6B — Aqua Agent (planned)
+## Phase 6B — Aqua Agent: water intelligence via NDWI
 
-- [ ] Water index (NDWI from B03/B08) + a water classification/tier scheme following the
-      Agri pattern (windowed reads, unavailable contract, provenance).
-- [ ] Persistence (migration), service, endpoints (`/aqua/...`), tests, dashboard panel.
-- [ ] Historical water-spread comparison hooks (shared with 6E).
+### Shared core (extracted for 6A + 6B)
+
+- [x] `app/services/geospatial/` now owns the whole windowed index pipeline: `bands.py`
+  (provider band-role maps incl. NDWI `{green: B03, nir: B08, cloud_mask: SCL}`,
+  `resolve_band_keys`), `indices.py` (`IndexSpec` with band roles, `INDEX_REGISTRY`,
+  `WATER_INDEX_REGISTRY={ndwi}`, `compute_ndvi`/`compute_ndwi`), `analysis.py`
+  (`normalized_difference`, `index_info`, `window_for`, `window_pixel_count`,
+  `analyze_index_ratio`, `IndexAnalysisUnavailable`), `statistics.py`, `raster.py`.
+- [x] `app/services/agri/` reduced to an adapter: `__init__.py` re-exports the core API and
+  `compute_agri_index` keeps the exact 6A output shape; `bands.py`/`indices.py`/`statistics.py`
+  are compatibility shims; `classification.py` imports `SCL_CLOUD_MASK_CLASSES` from the core.
+- [x] `satellite_scene_service.completed_retrieval_paths(db, scene_id, asset_keys)` made public
+  so both Agri and Aqua resolve retrieved band paths; `agri_service` rewired to it.
+- [x] 6A regression-proof: **41/41 agri tests** still pass after extraction (byte-identical NDVI).
+
+### Aqua index computation (`app/services/aqua/`)
+
+- [x] `indices` via `WATER_INDEX_REGISTRY`: NDWI `(B03−B08)/(B03+B08+ε)` (McFeeters 1996).
+- [x] `classification.py`: `DEFAULT_THRESHOLD = 0.0`, `BOUNDARY =
+  "water = NDWI >= threshold (inclusive)"`, `classify`, `water_summary`
+  (water area/`pct_of_aoi_area`/`pixel_pct`; non-water pixel count/share only),
+  `LIMITATIONS_NOTE` surfaced as `threshold_source`.
+- [x] `__init__.py`: `AquaError`, `AquaUnavailable`, `compute_aqua_index` (thin adapter over
+  `analyze_index_ratio`; unavailable codes mirror Agri).
+
+### Persistence and API
+
+- [x] **No persistence by design (derived on demand).** There is no migration and no
+  `aqua_analyses` table; every call recomputes from the retrieved bands, so stored results can
+  never go stale. `POST /aqua/analyze` returns completed or `unavailable` (HTTP 200) results;
+  there are no `GET /aqua/...` endpoints.
+- [x] Schemas `app/schemas/aqua.py`: `AquaAnalyzeRequest` (incl. `threshold` override),
+  `AquaIndexInfo`, `AquaBandOutput`, `AquaCloudInfo`, `AquaStatistics`, `AquaWaterSummary`,
+  `AquaNonWaterSummary`, `AquaClassification`, `AquaSceneReference`, `AquaProcessingInfo`,
+  `AquaUnavailableInfo`, `AquaAnalysisResult`, `AquaAnalyzeResponse`;
+  `SUPPORTED_INDICES = ("ndwi",)`.
+- [x] Service `app/services/aqua_service.py`: `analyze` (session AOI or `aoi` override,
+  scene ownership/access via Phase 6A changes, threshold default from settings + `[-1,1]`
+  validation, SCL optional-but-warned, per-index computation, nothing persisted).
+- [x] Endpoint `app/api/v1/endpoints/aqua.py`: `POST /aqua/analyze`; registered in v1 router.
+- [x] Error codes: `aqua_index_unsupported`, `aqua_index_required`, `session_has_no_aoi`,
+  `invalid_aqua_threshold` (400); per-result unavailable codes mirror Agri.
+- [x] Settings `GEOAGENT_AQUA_WATER_THRESHOLD` (0.0), `GEOAGENT_AQUA_MIN_VALID_FRACTION`
+  (0.01), `GEOAGENT_AQUA_MAX_WINDOW_PIXELS` (20 000 000) in `app/core/config.py`.
+
+### Tests
+
+- [x] `tests/aqua_mocks.py`: synthetic NDWI-ready scenes (pure water `NDWI ≈ +0.55`,
+  pure land `NDWI = −0.2`, split water/land), clear/cloudy SCL, `write_aqua_bands` reusing
+  the agri band writer on the same UTM grid.
+- [x] `tests/test_aqua_unit.py` — **23 passing**: NDWI math incl. zero-denominator/NaN/inf,
+  VNIR-negative, inclusive threshold boundary (0.0 is water), grid-structure stats, water
+  area math, threshold overrides on known scenes, SCL masking, missing-SCL warning, zeros
+  as nodata, scale invariance, and all unavailable codes.
+- [x] `tests/test_aqua.py` — **14 passing**: auth, unknown session/scene, cross-user access,
+  unsupported/empty indices, invalid threshold, `bands_not_retrieved` /
+  `insufficient_valid_pixels` unavailable, completed provenance, threshold echo, SCL-missing
+  warning fallback, `mask_clouds: false`, and the derived-on-demand contract (no `aqua_%`
+  table exists after analysis).
+- [x] Full suite: `python -m pytest -q` (env `GEOAGENT_TEST_PG_HOST=127.0.0.1`
+  `GEOAGENT_TEST_PG_PORT=55432`) → **184 passed** (147 pre-6B + 37 aqua);
+  `python -m ruff check .` and `python -m ruff format --check` → clean.
+
+### Frontend — Aqua panel
+
+- [x] `src/lib/api/types.ts`: `AquaIndexName/Info`, `AquaStatistics`, `AquaWaterSummary`,
+  `AquaNonWaterSummary`, `AquaClassification`, `AquaCloudInfo`, `AquaBandOutput`,
+  `AquaSceneReference`, `AquaUnavailableInfo`, `AquaAnalysisResult`,
+  `AquaAnalyzeRequest/Response`.
+- [x] `src/lib/api/aqua.ts`: `analyzeAqua` (session id + scene id inside payload).
+- [x] `src/components/analysis/AquaPanel.tsx`: scene selector, B03/B08/SCL retrieval chips,
+  NDWI threshold input (default 0.0, bounded [−1,1]), mask-clouds toggle, Analyze button,
+  statistics grid, open-water vs non-water share bar + legend, provenance footer (formula,
+  applied threshold + boundary, bands, window area, heuristic disclaimer), unavailable card.
+- [x] `AnalysisWorkspace.tsx`: new **Water intelligence** section gated on an active session.
+- [x] `npm run typecheck` → clean; `npm run lint` → 0 errors (only pre-existing Phase 4
+  warnings); `npm run build` → green.
+
+### Documentation
+
+- [x] `docs/api-spec.md` §11 — Phase 6B endpoint, result shape, error/unavailable codes,
+  derived-on-demand note + overall suite count 184.
+- [x] `docs/scientific-methodology.md` — NDWI formula/bands, inclusive threshold boundary,
+  area semantics, heuristic disclaimer, shared-core algorithm/provenance, verification.
+- [x] `docs/project-management/roadmap.md` — 6B completed point.
+- [x] `.env.example` + `backend/.env.example` — `GEOAGENT_AQUA_*` vars documented.
 
 ## Phase 6C — Weather integration (planned)
 
@@ -136,5 +218,6 @@ provenance-rich results, and full verification before commit/push.
 
 ## When this is done
 
-After 6A is committed (message `feat(agri): add agricultural geospatial intelligence`) and
-pushed to `origin/main`, proceed to **Phase 6B — Aqua Agent**.
+6A was committed (`feat(agri): add agricultural geospatial intelligence`) and pushed to
+`origin/main`. **6B is committed as `feat(aqua): add water intelligence`** and pushed; after
+verifying a clean tree, proceed to **Phase 6C — Weather integration**.

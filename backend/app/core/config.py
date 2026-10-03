@@ -134,6 +134,14 @@ class Settings(BaseSettings):
     agri_min_valid_fraction: float = 0.01
     agri_max_window_pixels: int = 20_000_000
 
+    # Water intelligence (Phase 6B). NDWI-based open-water detection over the
+    # same retrieved Sentinel-2 band assets. The water threshold is a documented
+    # heuristic (NDWI >= threshold -> water); it is configurable per-analysis
+    # and echoed in every response so results stay auditable.
+    aqua_water_threshold: float = 0.0
+    aqua_min_valid_fraction: float = 0.01
+    aqua_max_window_pixels: int = 20_000_000
+
     @model_validator(mode="after")
     def _validate_secret_key(self) -> Settings:
         if self.app_env != "test" and (not self.auth_secret_key or len(self.auth_secret_key) < 32):

@@ -13,12 +13,6 @@ from __future__ import annotations
 
 import numpy as np
 
-# Sentinel-2 Scene Classification Layer classes treated as "not clear sky".
-# 0=NO_DATA, 1=SATURATED/DEFECTIVE, 3=CLOUD_SHADOWS, 8/9=CLOUD (med/high),
-# 10=THIN_CIRRUS, 11=SNOW/ICE. 4=vegetation / 5=not-vegetated / 6=water /
-# 7=unclassified are kept as valid pixels when masking clouds.
-SCL_CLOUD_MASK_CLASSES = (0, 1, 3, 8, 9, 10, 11)
-
 HEURISTIC_NOTE = (
     "Heuristic reference vegetation-condition tiers (documented thresholds), "
     "not a validated crop-health or yield model."

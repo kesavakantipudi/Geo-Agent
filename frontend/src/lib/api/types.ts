@@ -345,6 +345,109 @@ export interface AgriAnalysisSummary {
 
 export type SessionStatus = "draft" | "queued" | "running" | "completed" | "failed";
 
+export type AquaIndexName = "ndwi";
+
+export interface AquaIndexInfo {
+  name: AquaIndexName;
+  label: string;
+  formula: string;
+  band_roles: Record<string, string>;
+  units: string;
+  range: [number, number];
+  description: string;
+}
+
+export interface AquaBandOutput {
+  role: string;
+  asset_key: string;
+  retrieval_id: number;
+}
+
+export interface AquaCloudInfo {
+  mask_clouds: boolean;
+  cloud_mask_available: boolean;
+  masked_classes: number[];
+}
+
+export interface AquaStatistics {
+  min: number;
+  max: number;
+  mean: number;
+  median: number;
+  stddev: number;
+  valid_pixel_count: number;
+  aoi_pixel_count: number;
+  valid_pixel_pct: number;
+  excluded_pixel_pct: number;
+  sampled_area_m2: number;
+  units: string;
+  range: [number, number];
+}
+
+export interface AquaWaterSummary {
+  pixel_count: number;
+  area_m2: number;
+  pixel_pct: number;
+  pct_of_aoi_area: number;
+}
+
+export interface AquaNonWaterSummary {
+  pixel_count: number;
+  pixel_pct: number;
+}
+
+export interface AquaClassification {
+  label: string;
+  threshold: number;
+  threshold_source: string;
+  boundary: string;
+  water: AquaWaterSummary;
+  non_water: AquaNonWaterSummary;
+  invalid_pixel_count: number;
+}
+
+export interface AquaSceneReference {
+  id: number;
+  provider: SatelliteProviderCode;
+  scene_id: string;
+  platform: string | null;
+  acquisition_date: string | null;
+  cloud_cover: number | null;
+}
+
+export interface AquaUnavailableInfo {
+  code: string;
+  reason: string;
+  details: string[];
+}
+
+export interface AquaAnalysisResult {
+  status: "completed" | "unavailable";
+  scene: AquaSceneReference;
+  index: AquaIndexInfo | null;
+  acquisition_date: string | null;
+  cloud: AquaCloudInfo | null;
+  statistics: AquaStatistics | null;
+  classification: AquaClassification | null;
+  bands: AquaBandOutput[] | null;
+  processing: Record<string, unknown> | null;
+  warnings: string[];
+  unavailable: AquaUnavailableInfo | null;
+}
+
+export interface AquaAnalyzeRequest {
+  analysis_session_id: number;
+  scene_id: number;
+  aoi?: GeoJsonGeometry | null;
+  indices: AquaIndexName[];
+  mask_clouds: boolean;
+  threshold?: number;
+}
+
+export interface AquaAnalyzeResponse {
+  results: AquaAnalysisResult[];
+}
+
 export interface AnalysisSession {
   id: number;
   user_id: number;

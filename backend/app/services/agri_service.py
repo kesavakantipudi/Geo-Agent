@@ -10,7 +10,6 @@ timeline (6E) and change-detection (6D) use.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -18,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.exceptions import bad_request, not_found
-from app.models import AgriAnalysis, SatelliteRetrieval, SatelliteScene
+from app.models import AgriAnalysis, SatelliteScene
 from app.schemas import agri as agri_schemas
 from app.services import analysis_session_service, satellite_scene_service
 from app.services.agri import AgriUnavailable, bands, compute_agri_index
@@ -80,7 +79,7 @@ def analyze(
             )
             continue
         required = {"red", "nir"}
-        retrieval_paths, retrieval_ids, missing = _completed_retrievals(
+        retrieval_paths, retrieval_ids, missing = satellite_scene_service.completed_retrieval_paths(
             db, scene.id, [role_keys[role] for role in required]
         )
         if missing:
@@ -103,7 +102,7 @@ def analyze(
         # but a missing SCL retrieval degrades to an unmasked analysis with a
         # warning instead of failing the whole request.
         if data.mask_clouds and "cloud_mask" in role_keys:
-            scl_paths, scl_ids, scl_missing = _completed_retrievals(
+            scl_paths, scl_ids, scl_missing = satellite_scene_service.completed_retrieval_paths(
                 db, scene.id, [role_keys["cloud_mask"]]
             )
             if not scl_missing:
@@ -183,43 +182,6 @@ def list_analyses_for_session(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-
-def _completed_retrievals(
-    db: Session,
-    scene_id: int,
-    asset_keys: list[str],
-) -> tuple[dict[str, str], dict[str, int], list[str]]:
-    """Latest completed retrieval per asset key -> (absolute path, retrieval id)."""
-    rows = (
-        db.execute(
-            select(SatelliteRetrieval)
-            .where(
-                SatelliteRetrieval.scene_id == scene_id,
-                SatelliteRetrieval.asset_key.in_(asset_keys),
-                SatelliteRetrieval.status == "completed",
-                SatelliteRetrieval.stored_path.is_not(None),
-            )
-            .order_by(SatelliteRetrieval.requested_at.desc(), SatelliteRetrieval.id.desc())
-        )
-        .scalars()
-        .all()
-    )
-    storage_dir = Path(get_settings().retrieval_storage_dir)
-    paths: dict[str, str] = {}
-    ids: dict[str, int] = {}
-    keyword_slots = {key for key in asset_keys}
-    for row in rows:
-        if row.asset_key not in keyword_slots:
-            continue
-        target = storage_dir / row.stored_path
-        if not target.is_file():
-            continue
-        paths[row.asset_key] = str(target)
-        ids[row.asset_key] = row.id
-        keyword_slots.discard(row.asset_key)
-    missing = [key for key in asset_keys if key not in paths]
-    return paths, ids, missing
 
 
 def _persist_result(

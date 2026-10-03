@@ -1,8 +1,24 @@
 # GeoAgent — API Specification
 
-> **Status:** Phases 2–5 and Phase 6A (Agri Agent) are implemented. Phase 6A adds `POST /agri/analyze` (windowed spectral-index computation over locally retrieved band assets), `GET /agri/analyses/{id}`, and `GET /agri/sessions/{id}/analyses` — deterministic NDVI only, with explicit `unavailable` states (HTTP 200) instead of fabricated numbers, provenance-rich processing metadata, documented heuristic tier thresholds, and persisted completed results. The suite has 147 passing integration tests. Endpoints below not yet implemented remain planned; planned modules stay as recorded design intent.
+> **Status:** Phases 2–5, Phase 6A (Agri Agent), and Phase 6B (Aqua Agent) are implemented. Phase 6B adds `POST /aqua/analyze` — deterministic NDWI open-water detection over locally retrieved band assets, sharing the Phase 6A windowed index core (`app/services/geospatial`). Unlike Agri, Aqua results are **derived on demand and never persisted** (no `aqua_analyses` table, no GET endpoints); every call recomputes from the retrieved bands, so there is nothing to go stale. It honors the same explicit `unavailable` states (HTTP 200, never fabricated numbers) and provenance-rich metadata. The suite has 184 passing integration tests. Endpoints below not yet implemented remain planned; planned modules stay as recorded design intent.
 
 Reference: [`PRD.md`](../PRD.md) §28.
+
+## 11. Phase 6B — implemented endpoints (water intelligence)
+
+Base path `/api/v1`, same cookie/bearer auth and error contract. Analysis is anchored to an analysis session (its AOI and access rules) and a satellite **scene** whose band assets were already retrieved via the Phase 4 `/satellite` endpoints. Computations reuse the shared Phase 6A windowed raster core (`app/services/geospatial`) and never resample reflectance — if band grids do not align, the analysis is reported `unavailable`, not silently interpolated.
+
+| Method | Path | Summary |
+| --- | --- | --- |
+| `POST` | `/aqua/analyze` | Body: `{analysis_session_id, scene_id, aoi?, indices?=["ndwi"], mask_clouds?=true, threshold?}`. `aoi` is an optional per-call override (defaults to the session AOI); `threshold` overrides the default water threshold (default `GEOAGENT_AQUA_WATER_THRESHOLD = 0.0`). Returns `{results: [AquaAnalysisResult]}` — one result per requested index. Only `ndwi` is registered (`aqua_index_unsupported` for anything else). |
+
+`AquaAnalysisResult` fields (completed): `status`, `scene` (`AquaSceneReference`), `index` (`AquaIndexInfo` — name/label/formula/band_roles/units/range/description), `acquisition_date`, `cloud` (`AquaCloudInfo` — requested masking, whether the SCL mask was actually available, masked SCL classes `[0,1,3,8,9,10,11]`), `statistics` (same shape as Agri), `classification` (label, applied `threshold`, `threshold_source` heuristic note, `boundary`, `water` `{pixel_count, area_m2, pixel_pct, pct_of_aoi_area}`, `non_water` `{pixel_count, pixel_pct}`, `invalid_pixel_count`), `bands` (role → asset_key → retrieval_id provenance), `processing` (algorithm `geoagent-ndwi-v1`, processor, library versions, window, pixel area, masked classes, `zero_as_nodata`), `warnings`. There is **no `id`/`created_at`** and no persistence — results are recomputed on demand from retrieved bands.
+
+`unavailable` results carry `status:"unavailable"`, `unavailable: {code, reason, details[]}`, and the scene reference — returned as HTTP 200 (the request was valid; the data could not be computed faithfully).
+
+Validation error codes: `aqua_index_unsupported`, `aqua_index_required`, `session_has_no_aoi`, `invalid_aqua_threshold` (requested threshold outside [−1, 1]). Per-result unavailable codes mirror Agri: `provider_unsupported`, `bands_not_retrieved` (B03/B08 not retrieved — or SCL if masking was explicitly requested and available), `band_read_failed`, `crs_transform_failed`, `no_overlap`, `aoi_window_too_large`, `band_grid_mismatch`, `insufficient_valid_pixels`.
+
+NDWI is computed `(GREEN − NIR) / (GREEN + NIR)` from Level-2A reflectance (B03 green, B08 NIR) with the same normalization/resampling guarantees as NDVI. **Water = `ndwi >= threshold`, inclusive.** `water.area_m2 = water_pixels × pixel_area_m2`; `water.pct_of_aoi_area = water_area / AOI area × 100`; `pixel_pct` is the share of *valid* pixels. Cloud/quality masking via SCL removes classes `[0,1,3,8,9,10,11]`; when SCL is absent, `mask_clouds: true` falls back to an unmasked analysis **with a warning**. Thresholds are heuristic and clearly labeled — see `docs/scientific-methodology.md`.
 
 ## 10. Phase 6A — implemented endpoints (agricultural intelligence)
 
